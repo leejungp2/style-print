@@ -17,45 +17,74 @@ public/
   uploads/    업로드 이미지 저장소
 ```
 
-## 실행
+## 로컬 실행
 
 ```bash
+cd /Users/Owner/hcclab/style-print-jung
 npm install
+cp .env.local.example .env.local
+```
+
+프로젝트 루트의 `.env.local`에 실제 API key를 입력합니다.
+
+개발 서버를 실행합니다.
+
+```bash
 npm run dev
 ```
 
-- Web: `http://localhost:5173`
-- API: `http://localhost:4000`
-- Health check: `http://localhost:4000/health`
+접속 및 확인:
 
-개별 실행도 가능합니다.
+```bash
+open http://localhost:5173
+curl http://localhost:4000/health
+```
+
+API와 Web을 터미널 두 개로 나눠 실행할 수도 있습니다.
 
 ```bash
 npm run dev:api
+```
+
+```bash
 npm run dev:web
 ```
 
 ## 환경 변수
 
-`.env.local.example`을 참고해 필요한 값을 설정합니다.
+`.env.local` 위치는 프로젝트 루트입니다.
+
+```text
+/Users/Owner/hcclab/style-print-jung/.env.local
+```
+
+파일이 없으면 `.env.local.example`에서 복사합니다.
+
+```bash
+cp .env.local.example .env.local
+```
 
 ```env
-V0_API_KEY=
+OPENAI_API_KEY=sk-...
+OPENAI_MODEL=gpt-4.1-mini
+V0_API_KEY=...
+V0_MODEL=v0-1.5-md
 API_PORT=4000
 WEB_ORIGIN=http://localhost:5173
 ```
 
-`V0_API_KEY`가 없으면 typography/layout/mood/code generation은 mock 데이터를 사용합니다.
+`OPENAI_API_KEY`와 `V0_API_KEY`는 필수입니다. 누락되거나 API 호출이 실패하면 임의 데이터로 진행하지 않고 해당 API 요청이 실패합니다.
 
 ## 주요 흐름
 
 1. Web에서 screenshot을 base64 data URL로 변환해 API에 업로드합니다.
 2. API는 이미지를 `public/uploads`에 저장하고 metadata를 `data/references.json`에 기록합니다.
-3. facet extraction은 색상, typography, layout, spacing, component style token을 생성합니다.
-4. Web에서 recipe를 선택하면 API가 intent spec으로 정규화합니다.
-5. API가 contrast/density/spacing conflict를 평가하고 repair plan을 저장합니다.
-6. 생성 요청 시 API가 v0 또는 mock generator로 React + Tailwind 코드를 반환합니다.
-7. audit endpoint가 생성 코드에서 facet을 역추출해 intent와 비교합니다.
+3. API가 `sharp`로 screenshot 픽셀 기반 color token을 추출합니다.
+4. OpenAI Responses API가 typography, layout, spacing, component style, mood keyword를 JSON facet으로 분석합니다.
+5. Web에서 recipe를 선택하면 API가 IntentSpec으로 정규화합니다.
+6. API가 rule-based contrast/density/spacing conflict를 평가하고 repair plan을 저장합니다.
+7. 생성 요청 시 v0가 React + Tailwind 코드를 반환합니다.
+8. OpenAI audit이 생성 코드에서 facet을 역추출하고 intent와 비교합니다.
 
 ## API
 
@@ -84,6 +113,6 @@ npm run build
 
 ## 현재 한계
 
-- 색상 추출은 서버에서 실제 픽셀 분석이 아니라 base64 hash 기반 mock 로직입니다.
+- OpenAI/v0 API key가 없거나 외부 API 호출이 실패하면 관련 API 요청은 실패합니다.
 - 저장소는 JSON 파일 기반이라 다중 사용자/배포 환경에는 SQLite/PostgreSQL/S3/R2 같은 저장소가 필요합니다.
 - 인증과 사용자별 데이터 분리는 아직 없습니다.
