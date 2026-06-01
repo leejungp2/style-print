@@ -1,4 +1,4 @@
-# Style Print Jung
+# StylePrint
 
 UI reference screenshot에서 디자인 특징을 추출하고, 여러 reference의 스타일 요소를 조합해 React + Tailwind UI 코드를 생성하는 Next.js 프로토타입입니다.
 
