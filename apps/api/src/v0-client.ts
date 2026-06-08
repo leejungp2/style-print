@@ -36,7 +36,7 @@ export async function generateUICode(
   _mode: 'single' | 'staged' = 'single'
 ): Promise<string> {
   const system =
-    'You are an expert UI engineer translating framework-neutral design specs into clean React + Tailwind exports.'
+    'You are an expert UI engineer translating framework-neutral IntentSpecs into clean React + Tailwind exports.'
   const messages: V0Message[] = [
     {
       role: 'system',

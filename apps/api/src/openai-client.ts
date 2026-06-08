@@ -1,7 +1,7 @@
 import type {
   AuditReport,
   ComponentStyleFacetToken,
-  DesignSpec,
+  IntentSpec,
   LayoutFacetToken,
   SpacingFacetToken,
   TypographyFacetToken,
@@ -63,7 +63,7 @@ export async function analyzeDesignFacets(
 
 export async function auditGeneratedCodeWithOpenAI(
   code: string,
-  designSpec: DesignSpec
+  intentSpec: IntentSpec
 ): Promise<AuditReport['augmented']> {
   const audit = await callOpenAIJSON<AuditReport['augmented']>(
     'generated_code_audit',
@@ -75,9 +75,9 @@ export async function auditGeneratedCodeWithOpenAI(
           {
             type: 'input_text',
             text: [
-              'Audit the generated code export against the expected framework-neutral DesignSpec.',
+              'Audit the generated code export against the expected framework-neutral IntentSpec.',
               'Return the design facets that are actually expressed in the code.',
-              `Expected DesignSpec normalized facets: ${JSON.stringify(designSpec.normalized)}`,
+              `Expected IntentSpec normalized facets: ${JSON.stringify(intentSpec.normalized)}`,
               'Generated code:',
               code,
             ].join('\n\n'),

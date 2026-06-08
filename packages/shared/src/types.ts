@@ -113,18 +113,18 @@ export type FacetPack = {
 }
 
 // ============================================
-// Design Spec Types
+// Intent Spec Types
 // ============================================
 
-export type DesignExportFormat = 'react-tailwind'
+export type IntentExportFormat = 'react-tailwind'
 
-export type DesignExportTarget = {
-  format: DesignExportFormat
+export type IntentExportTarget = {
+  format: IntentExportFormat
   label: string
   description: string
 }
 
-export type DesignSpec = {
+export type IntentSpec = {
   id: string
   chosen: {
     colorRefId?: string
@@ -146,11 +146,8 @@ export type DesignSpec = {
   history: SpecChange[]
   createdAt: number
   coherenceScore?: number
-  targetExport: DesignExportTarget
+  targetExport: IntentExportTarget
 }
-
-// Backward-compatible name for existing API routes and stored data.
-export type IntentSpec = DesignSpec
 
 // ============================================
 // Conflict Types
@@ -201,7 +198,7 @@ export type SpecChange = {
 export type Recipe = {
   id: string
   name: string
-  chosen: DesignSpec['chosen']
+  chosen: IntentSpec['chosen']
   coherenceScore: number
   description: string
 }
@@ -287,12 +284,11 @@ export type ExtractResponse = {
 }
 
 export type CreateIntentRequest = {
-  chosen: DesignSpec['chosen']
+  chosen: IntentSpec['chosen']
 }
 
 export type CreateIntentResponse = {
   success: boolean
-  designSpec?: DesignSpec
   intentSpec?: IntentSpec
   error?: string
 }

@@ -37,7 +37,6 @@ import type {
   ComponentStyleFacetToken,
   ConflictCard,
   CreateIntentResponse,
-  DesignSpec,
   EvaluateResponse,
   ExtractResponse,
   FacetDiff,
@@ -52,10 +51,10 @@ import type {
   UploadResponse,
 } from '@style-print-jung/shared'
 
-const MVP_EXPORT_TARGET: DesignSpec['targetExport'] = {
+const MVP_EXPORT_TARGET: IntentSpec['targetExport'] = {
   format: 'react-tailwind',
   label: 'React + Tailwind',
-  description: 'MVP export target; the DesignSpec remains framework-neutral.',
+  description: 'MVP export target; the IntentSpec remains framework-neutral.',
 }
 
 const app = Fastify({
@@ -323,7 +322,7 @@ app.post('/api/facets/extract', async (request, reply) => {
 
 app.post('/api/intents/create', async (request, reply) => {
   try {
-    const { chosen } = request.body as { chosen?: DesignSpec['chosen'] }
+    const { chosen } = request.body as { chosen?: IntentSpec['chosen'] }
 
     if (!chosen) {
       return reply
@@ -331,8 +330,8 @@ app.post('/api/intents/create', async (request, reply) => {
         .send({ success: false, error: 'No chosen facets provided' } satisfies CreateIntentResponse)
     }
 
-    const normalized: DesignSpec['normalized'] = {}
-    const provenance: DesignSpec['provenance'] = {}
+    const normalized: IntentSpec['normalized'] = {}
+    const provenance: IntentSpec['provenance'] = {}
 
     if (chosen.colorRefId) {
       const pack = await getFacetPackByRefId(chosen.colorRefId)
@@ -385,7 +384,7 @@ app.post('/api/intents/create', async (request, reply) => {
       }
     }
 
-    const designSpec: DesignSpec = {
+    const intentSpec: IntentSpec = {
       id: nanoid(),
       chosen,
       normalized,
@@ -397,12 +396,11 @@ app.post('/api/intents/create', async (request, reply) => {
       targetExport: MVP_EXPORT_TARGET,
     }
 
-    await saveIntentSpec(designSpec)
+    await saveIntentSpec(intentSpec)
 
     return reply.send({
       success: true,
-      designSpec,
-      intentSpec: designSpec,
+      intentSpec,
     } satisfies CreateIntentResponse)
   } catch (error) {
     request.log.error(error)
@@ -805,13 +803,13 @@ function evaluateIntentSpec(intentSpec: IntentSpec): {
   }
 }
 
-function buildGenerationPrompt(designSpec: DesignSpec): string {
-  const { normalized } = designSpec
-  const targetExport = designSpec.targetExport || MVP_EXPORT_TARGET
+function buildGenerationPrompt(intentSpec: IntentSpec): string {
+  const { normalized } = intentSpec
+  const targetExport = intentSpec.targetExport || MVP_EXPORT_TARGET
   let prompt = [
-    'Translate the following framework-neutral DesignSpec into a UI code export.',
+    'Translate the following framework-neutral IntentSpec into a UI code export.',
     `Current export target: ${targetExport.label} (${targetExport.format}).`,
-    'Treat the DesignSpec as the source of truth. Do not replace it with a generic Tailwind aesthetic.',
+    'Treat the IntentSpec as the source of truth. Do not replace it with a generic Tailwind aesthetic.',
     '',
   ].join('\n')
 
@@ -865,7 +863,7 @@ function buildGenerationPrompt(designSpec: DesignSpec): string {
   prompt += '4. Make it responsive (mobile-first approach)\n'
   prompt += '5. Include proper semantic HTML\n'
   prompt += '6. Export as default function component\n'
-  prompt += '7. Preserve the DesignSpec style decisions instead of falling back to framework defaults\n'
+  prompt += '7. Preserve the IntentSpec style decisions instead of falling back to framework defaults\n'
   prompt += '8. Component should be production-ready\n\n'
   prompt += 'Generate the complete React component code now.'
 
