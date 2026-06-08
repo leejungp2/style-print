@@ -1,7 +1,10 @@
 import Fastify from 'fastify'
+import multipart from '@fastify/multipart'
 import { nanoid } from 'nanoid'
+import { createWriteStream } from 'fs'
 import { promises as fs } from 'fs'
 import path from 'path'
+import { pipeline } from 'stream/promises'
 import { config } from './config'
 import {
   getReference,
@@ -26,6 +29,7 @@ import {
   analyzeDesignFacets,
   auditGeneratedCodeWithOpenAI,
 } from './openai-client'
+import { buildIntentExportPrompt } from './prompts/intent-export'
 import type {
   AuditReport,
   AuditResponse,
@@ -48,7 +52,21 @@ import type {
   UploadResponse,
 } from '@style-print-jung/shared'
 
-const app = Fastify({ logger: true })
+const MVP_EXPORT_TARGET: IntentSpec['targetExport'] = {
+  format: 'react-tailwind',
+  label: 'React + Tailwind',
+  description: 'MVP export target; the IntentSpec remains framework-neutral.',
+}
+
+const app = Fastify({
+  logger: { level: process.env.LOG_LEVEL || 'error' },
+})
+
+app.register(multipart, {
+  limits: {
+    fileSize: config.upload.maxFileSize,
+  },
+})
 
 app.addHook('onRequest', async (_request, reply) => {
   reply.header('Access-Control-Allow-Origin', config.api.webOrigin)
@@ -79,42 +97,61 @@ app.get('/uploads/:filename', async (request, reply) => {
 })
 
 app.post('/api/references/upload', async (request, reply) => {
-  try {
-    const { files } = request.body as { files: string[] }
+  // Files saved so far this request, so we can roll back on any failure and
+  // never leave a partial upload (some files persisted, some rejected) behind.
+  const references: ReferenceAsset[] = []
 
-    if (!files || !Array.isArray(files) || files.length === 0) {
+  const rollback = async () => {
+    for (const reference of references) {
+      await deleteStoredReferenceFile(reference).catch(() => undefined)
+      await deleteReference(reference.id).catch(() => undefined)
+    }
+    references.length = 0
+  }
+
+  try {
+    if (!request.isMultipart()) {
       return reply
         .status(400)
-        .send({ success: false, references: [], error: 'No files provided' } satisfies UploadResponse)
+        .send({ success: false, references: [], error: 'Expected multipart upload' } satisfies UploadResponse)
     }
 
-    const references: ReferenceAsset[] = []
     await ensureUploadDir()
 
-    for (let i = 0; i < files.length; i++) {
-      const dataUrl = files[i]
-      const validation = validateBase64Image(dataUrl)
+    let fileIndex = 0
+    for await (const file of request.files()) {
+      const mime = file.mimetype.toLowerCase()
 
-      if (!validation.valid) {
+      if (!config.upload.allowedMimes.includes(mime)) {
+        // Drain the rejected file's stream so the multipart request can finish
+        // cleanly, then undo anything already saved in this batch.
+        await file.toBuffer().catch(() => undefined)
+        await rollback()
         return reply.status(400).send({
           success: false,
           references: [],
-          error: `File ${i + 1}: ${validation.error}`,
+          error: `File ${fileIndex + 1}: Unsupported image type: ${mime}. Allowed: ${config.upload.allowedMimes.join(', ')}`,
         } satisfies UploadResponse)
       }
 
       const id = nanoid()
-      const extension = config.upload.mimeExtensions[validation.mime!]
-      const filename = `reference-${Date.now()}-${i}-${id}.${extension}`
+      const extension = config.upload.mimeExtensions[mime]
+      const filename = `reference-${Date.now()}-${fileIndex}-${id}.${extension}`
       const storagePath = `public/uploads/${filename}`
       const url = `/uploads/${filename}`
+      const filePath = path.join(config.upload.dir, filename)
 
-      await fs.writeFile(path.join(config.upload.dir, filename), validation.buffer!)
+      try {
+        await pipeline(file.file, createWriteStream(filePath))
+      } catch (error) {
+        await fs.unlink(filePath).catch(() => undefined)
+        throw error
+      }
 
       const reference: ReferenceAsset = {
         id,
         filename,
-        mime: validation.mime!,
+        mime,
         width: 0,
         height: 0,
         url,
@@ -124,11 +161,26 @@ app.post('/api/references/upload', async (request, reply) => {
 
       await saveReference(reference)
       references.push(reference)
+      fileIndex += 1
+    }
+
+    if (references.length === 0) {
+      return reply
+        .status(400)
+        .send({ success: false, references: [], error: 'No files provided' } satisfies UploadResponse)
     }
 
     return reply.send({ success: true, references } satisfies UploadResponse)
   } catch (error) {
     request.log.error(error)
+    await rollback()
+    if (error instanceof app.multipartErrors.RequestFileTooLargeError) {
+      return reply.status(413).send({
+        success: false,
+        references: [],
+        error: `File too large. Maximum size: ${config.upload.maxFileSize / 1024 / 1024}MB`,
+      } satisfies UploadResponse)
+    }
     return reply.status(500).send({
       success: false,
       references: [],
@@ -342,11 +394,15 @@ app.post('/api/intents/create', async (request, reply) => {
       repairs: [],
       history: [],
       createdAt: Date.now(),
+      targetExport: MVP_EXPORT_TARGET,
     }
 
     await saveIntentSpec(intentSpec)
 
-    return reply.send({ success: true, intentSpec } satisfies CreateIntentResponse)
+    return reply.send({
+      success: true,
+      intentSpec,
+    } satisfies CreateIntentResponse)
   } catch (error) {
     request.log.error(error)
     return reply.status(500).send({
@@ -495,7 +551,7 @@ app.post('/api/generate/v0', async (request, reply) => {
     }
 
     const code = await generateUICode(
-      buildGenerationPrompt(intentSpec),
+      buildIntentExportPrompt(intentSpec, MVP_EXPORT_TARGET),
       stepMode || 'single'
     )
 
@@ -575,42 +631,6 @@ async function start() {
 }
 
 void start()
-
-function validateBase64Image(dataUrl: string): {
-  valid: boolean
-  mime?: string
-  buffer?: Buffer
-  error?: string
-} {
-  const match = dataUrl.match(/^data:(image\/[a-z]+);base64,(.+)$/i)
-  if (!match) {
-    return { valid: false, error: 'Invalid data URL format' }
-  }
-
-  const mime = match[1].toLowerCase()
-  const data = match[2]
-
-  if (!config.upload.allowedMimes.includes(mime)) {
-    return {
-      valid: false,
-      error: `Unsupported image type: ${mime}. Allowed: ${config.upload.allowedMimes.join(', ')}`,
-    }
-  }
-
-  const sizeBytes = (data.length * 3) / 4
-  if (sizeBytes > config.upload.maxFileSize) {
-    return {
-      valid: false,
-      error: `File too large. Maximum size: ${config.upload.maxFileSize / 1024 / 1024}MB`,
-    }
-  }
-
-  try {
-    return { valid: true, mime, buffer: Buffer.from(data, 'base64') }
-  } catch {
-    return { valid: false, error: 'Invalid base64 image data' }
-  }
-}
 
 async function ensureUploadDir() {
   await fs.mkdir(config.upload.dir, { recursive: true })
@@ -782,66 +802,6 @@ function evaluateIntentSpec(intentSpec: IntentSpec): {
     repairs,
     coherenceScore: Math.max(0, Math.min(100, coherenceScore)),
   }
-}
-
-function buildGenerationPrompt(intentSpec: IntentSpec): string {
-  const { normalized } = intentSpec
-  let prompt = 'Create a modern, responsive React component using Tailwind CSS with the following design specifications:\n\n'
-
-  if (normalized.palette) {
-    prompt += '## Color Palette\nUse these exact colors:\n'
-    Object.entries(normalized.palette).forEach(([role, hex]) => {
-      prompt += `- ${role}: ${hex}\n`
-    })
-    prompt += '\n'
-  }
-
-  if (normalized.typography) {
-    const typo = normalized.typography
-    prompt += '## Typography\n'
-    if (typo.fontCandidates?.[0]) {
-      prompt += `- Font Family: ${typo.fontCandidates[0].name}\n`
-    }
-    prompt += `- Heading 1: ${typo.scale.h1}px\n`
-    prompt += `- Heading 2: ${typo.scale.h2}px\n`
-    prompt += `- Body: ${typo.scale.body}px\n`
-    prompt += `- Caption: ${typo.scale.caption}px\n`
-    prompt += `- Line Height (body): ${typo.lineHeight.body}\n\n`
-  }
-
-  if (normalized.layout) {
-    prompt += '## Layout\n'
-    prompt += `- Pattern: ${normalized.layout.pattern}\n`
-    if (normalized.layout.columns) {
-      prompt += `- Columns: ${normalized.layout.columns}\n`
-    }
-    prompt += `- Density: ${normalized.layout.density}\n\n`
-  }
-
-  if (normalized.spacing) {
-    prompt += '## Spacing\n'
-    prompt += `- Base unit: ${normalized.spacing.baseUnit}px\n`
-    prompt += `- Scale: ${normalized.spacing.scale.join(', ')}px\n\n`
-  }
-
-  if (normalized.componentStyle) {
-    prompt += '## Component Style\n'
-    prompt += `- Border Radius: ${normalized.componentStyle.radius}\n`
-    prompt += `- Shadow: ${normalized.componentStyle.shadow}\n`
-    prompt += `- Border: ${normalized.componentStyle.border}\n\n`
-  }
-
-  prompt += '## Requirements\n'
-  prompt += '1. Create a complete, functional React component\n'
-  prompt += '2. Use Tailwind CSS classes for all styling\n'
-  prompt += '3. Ensure all color combinations meet WCAG AA contrast requirements (4.5:1 minimum)\n'
-  prompt += '4. Make it responsive (mobile-first approach)\n'
-  prompt += '5. Include proper semantic HTML\n'
-  prompt += '6. Export as default function component\n'
-  prompt += '7. Component should be production-ready\n\n'
-  prompt += 'Generate the complete React component code now.'
-
-  return prompt
 }
 
 function calculateDiffs(

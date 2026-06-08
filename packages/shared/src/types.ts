@@ -116,6 +116,14 @@ export type FacetPack = {
 // Intent Spec Types
 // ============================================
 
+export type IntentExportFormat = 'react-tailwind'
+
+export type IntentExportTarget = {
+  format: IntentExportFormat
+  label: string
+  description: string
+}
+
 export type IntentSpec = {
   id: string
   chosen: {
@@ -138,6 +146,7 @@ export type IntentSpec = {
   history: SpecChange[]
   createdAt: number
   coherenceScore?: number
+  targetExport: IntentExportTarget
 }
 
 // ============================================

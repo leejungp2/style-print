@@ -1,10 +1,9 @@
-import { useState, useEffect, type ReactNode } from 'react'
+import { useState, useEffect, lazy, Suspense, type ReactNode } from 'react'
 import { ReferenceUploader } from '@/components/reference-uploader'
 import { FacetPackViewer } from '@/components/facet-pack-viewer'
 import { RecipeCards } from '@/components/recipe-cards'
 import { ConflictList } from '@/components/conflict-list'
 import { CodeViewer } from '@/components/code-viewer'
-import { PreviewPane } from '@/components/preview-pane'
 import { AuditDiffTable } from '@/components/audit-diff-table'
 import { ProvenanceBadges } from '@/components/provenance-badges'
 import { Button } from '@/components/ui/button'
@@ -14,6 +13,7 @@ import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
 import { Separator } from '@/components/ui/separator'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { apiUrl } from '@/lib/api'
 import {
   Upload,
   Palette,
@@ -34,6 +34,13 @@ import type {
   AuditReport,
   Recipe,
 } from '@/lib/types'
+
+// Code-split the live preview: the heavy @codesandbox/sandpack-react bundle is
+// only fetched when the preview is actually rendered, keeping the main bundle
+// (and initial memory footprint) small.
+const PreviewPane = lazy(() =>
+  import('@/components/preview-pane').then((m) => ({ default: m.PreviewPane }))
+)
 
 type Step = 'upload' | 'recipe' | 'generate'
 
@@ -69,7 +76,7 @@ export default function App() {
 
   const loadReferences = async () => {
     try {
-      const response = await fetch('/api/references/upload')
+      const response = await fetch(apiUrl('/api/references/upload'))
       const data = await response.json()
       if (data.success) {
         setReferences(data.references)
@@ -105,7 +112,7 @@ export default function App() {
       }
 
       try {
-        const response = await fetch('/api/facets/extract', {
+        const response = await fetch(apiUrl('/api/facets/extract'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ refId: ref.id }),
@@ -208,7 +215,7 @@ export default function App() {
     setSelectedRecipe(recipe)
 
     try {
-      const response = await fetch('/api/intents/create', {
+      const response = await fetch(apiUrl('/api/intents/create'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ chosen: recipe.chosen }),
@@ -216,19 +223,19 @@ export default function App() {
       const data = await response.json()
       if (data.success && data.intentSpec) {
         setIntentSpec(data.intentSpec)
-        evaluateIntent(data.intentSpec.id)
+        evaluateIntentSpec(data.intentSpec.id)
       }
     } catch (err) {
-      console.error('Failed to create intent:', err)
+      console.error('Failed to create intent spec:', err)
     }
   }
 
-  const evaluateIntent = async (intentId: string) => {
+  const evaluateIntentSpec = async (specId: string) => {
     try {
-      const response = await fetch('/api/intents/evaluate', {
+      const response = await fetch(apiUrl('/api/intents/evaluate'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ intentSpecId: intentId }),
+        body: JSON.stringify({ intentSpecId: specId }),
       })
       const data = await response.json()
       if (data.success) {
@@ -237,7 +244,7 @@ export default function App() {
         setCoherenceScore(data.coherenceScore || 0)
       }
     } catch (err) {
-      console.error('Failed to evaluate intent:', err)
+      console.error('Failed to evaluate intent spec:', err)
     }
   }
 
@@ -245,7 +252,7 @@ export default function App() {
     if (!intentSpec) return
 
     try {
-      const response = await fetch('/api/intents/apply-repair', {
+      const response = await fetch(apiUrl('/api/intents/apply-repair'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -256,7 +263,7 @@ export default function App() {
       const data = await response.json()
       if (data.success && data.intentSpec) {
         setIntentSpec(data.intentSpec)
-        evaluateIntent(data.intentSpec.id)
+        evaluateIntentSpec(data.intentSpec.id)
       }
     } catch (err) {
       console.error('Failed to apply repair:', err)
@@ -268,7 +275,7 @@ export default function App() {
 
     setGenerating(true)
     try {
-      const response = await fetch('/api/generate/v0', {
+      const response = await fetch(apiUrl('/api/generate/v0'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -294,7 +301,7 @@ export default function App() {
     if (!intentSpec) return
 
     try {
-      const response = await fetch('/api/audit/analyze', {
+      const response = await fetch(apiUrl('/api/audit/analyze'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -323,7 +330,7 @@ export default function App() {
             <div>
               <h1 className="text-2xl font-bold">UI Facet Mixer</h1>
               <p className="text-sm text-muted-foreground">
-                Extract, mix, and generate UI designs from reference screenshots
+                Extract, mix, and generate UI designs from uploaded design assets
               </p>
             </div>
             <Badge variant="outline">MVP v0.1</Badge>
@@ -376,10 +383,10 @@ export default function App() {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Upload className="h-5 w-5" />
-                  Reference Screenshots
+                  Reference Assets
                 </CardTitle>
                 <CardDescription>
-                  Upload UI screenshots to extract design facets
+                  Upload design references to extract reusable intent facets
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -577,10 +584,10 @@ export default function App() {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Wand2 className="h-5 w-5" />
-                  Generate UI Code
+                  Export UI Code
                 </CardTitle>
                 <CardDescription>
-                  Generate React + Tailwind code based on your selected recipe
+                  Export the selected IntentSpec as React + Tailwind code
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -620,7 +627,13 @@ export default function App() {
                 <TabsContent value="preview">
                   <Card>
                     <CardContent className="pt-6">
-                      <PreviewPane code={generatedCode.code} />
+                      <Suspense
+                        fallback={
+                          <p className="text-muted-foreground">Loading preview…</p>
+                        }
+                      >
+                        <PreviewPane code={generatedCode.code} />
+                      </Suspense>
                     </CardContent>
                   </Card>
                 </TabsContent>
@@ -637,7 +650,7 @@ export default function App() {
                       <CardHeader>
                         <CardTitle>Facet Diff</CardTitle>
                         <CardDescription>
-                          Comparing intent vs generated output
+                          Comparing IntentSpec vs generated output
                         </CardDescription>
                       </CardHeader>
                       <CardContent>
