@@ -1,10 +1,10 @@
 import type {
   AuditReport,
   ComponentStyleFacetToken,
+  DesignSpec,
   LayoutFacetToken,
   SpacingFacetToken,
   TypographyFacetToken,
-  IntentSpec,
 } from '@style-print-jung/shared'
 import { config, requireConfig } from './config'
 
@@ -63,7 +63,7 @@ export async function analyzeDesignFacets(
 
 export async function auditGeneratedCodeWithOpenAI(
   code: string,
-  intentSpec: IntentSpec
+  designSpec: DesignSpec
 ): Promise<AuditReport['augmented']> {
   const audit = await callOpenAIJSON<AuditReport['augmented']>(
     'generated_code_audit',
@@ -75,9 +75,9 @@ export async function auditGeneratedCodeWithOpenAI(
           {
             type: 'input_text',
             text: [
-              'Audit the generated React + Tailwind code against the expected IntentSpec.',
+              'Audit the generated code export against the expected framework-neutral DesignSpec.',
               'Return the design facets that are actually expressed in the code.',
-              `Expected IntentSpec normalized facets: ${JSON.stringify(intentSpec.normalized)}`,
+              `Expected DesignSpec normalized facets: ${JSON.stringify(designSpec.normalized)}`,
               'Generated code:',
               code,
             ].join('\n\n'),

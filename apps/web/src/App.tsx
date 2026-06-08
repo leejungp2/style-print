@@ -27,7 +27,7 @@ import {
 import type {
   ReferenceAsset,
   FacetPack,
-  IntentSpec,
+  DesignSpec,
   ConflictCard,
   RepairPlan,
   GeneratedCode,
@@ -57,7 +57,7 @@ export default function App() {
   // Recipe state
   const [recipes, setRecipes] = useState<Recipe[]>([])
   const [selectedRecipe, setSelectedRecipe] = useState<Recipe | null>(null)
-  const [intentSpec, setIntentSpec] = useState<IntentSpec | null>(null)
+  const [designSpec, setDesignSpec] = useState<DesignSpec | null>(null)
 
   // Conflict state
   const [conflicts, setConflicts] = useState<ConflictCard[]>([])
@@ -221,21 +221,22 @@ export default function App() {
         body: JSON.stringify({ chosen: recipe.chosen }),
       })
       const data = await response.json()
-      if (data.success && data.intentSpec) {
-        setIntentSpec(data.intentSpec)
-        evaluateIntent(data.intentSpec.id)
+      const createdSpec = data.designSpec || data.intentSpec
+      if (data.success && createdSpec) {
+        setDesignSpec(createdSpec)
+        evaluateDesignSpec(createdSpec.id)
       }
     } catch (err) {
-      console.error('Failed to create intent:', err)
+      console.error('Failed to create design spec:', err)
     }
   }
 
-  const evaluateIntent = async (intentId: string) => {
+  const evaluateDesignSpec = async (specId: string) => {
     try {
       const response = await fetch(apiUrl('/api/intents/evaluate'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ intentSpecId: intentId }),
+        body: JSON.stringify({ intentSpecId: specId }),
       })
       const data = await response.json()
       if (data.success) {
@@ -244,26 +245,26 @@ export default function App() {
         setCoherenceScore(data.coherenceScore || 0)
       }
     } catch (err) {
-      console.error('Failed to evaluate intent:', err)
+      console.error('Failed to evaluate design spec:', err)
     }
   }
 
   const applyRepair = async (repairId: string) => {
-    if (!intentSpec) return
+    if (!designSpec) return
 
     try {
       const response = await fetch(apiUrl('/api/intents/apply-repair'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          intentSpecId: intentSpec.id,
+          intentSpecId: designSpec.id,
           repairPlanId: repairId,
         }),
       })
       const data = await response.json()
       if (data.success && data.intentSpec) {
-        setIntentSpec(data.intentSpec)
-        evaluateIntent(data.intentSpec.id)
+        setDesignSpec(data.intentSpec)
+        evaluateDesignSpec(data.intentSpec.id)
       }
     } catch (err) {
       console.error('Failed to apply repair:', err)
@@ -271,7 +272,7 @@ export default function App() {
   }
 
   const generateUI = async () => {
-    if (!intentSpec) return
+    if (!designSpec) return
 
     setGenerating(true)
     try {
@@ -279,7 +280,7 @@ export default function App() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          intentSpecId: intentSpec.id,
+          intentSpecId: designSpec.id,
           stepMode: 'single',
         }),
       })
@@ -298,14 +299,14 @@ export default function App() {
   }
 
   const auditCode = async (code: string) => {
-    if (!intentSpec) return
+    if (!designSpec) return
 
     try {
       const response = await fetch(apiUrl('/api/audit/analyze'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          intentSpecId: intentSpec.id,
+          intentSpecId: designSpec.id,
           code,
         }),
       })
@@ -319,7 +320,7 @@ export default function App() {
   }
 
   const canProceedToRecipe = references.length > 0 && facetPacks.length > 0
-  const canProceedToGenerate = intentSpec !== null
+  const canProceedToGenerate = designSpec !== null
 
   return (
     <div className="min-h-screen bg-background">
@@ -497,7 +498,7 @@ export default function App() {
               </Card>
 
               {/* Conflicts & Repairs */}
-              {intentSpec && (
+              {designSpec && (
                 <Card className="mt-6">
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2">
@@ -584,17 +585,17 @@ export default function App() {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Wand2 className="h-5 w-5" />
-                  Generate UI Code
+                  Export UI Code
                 </CardTitle>
                 <CardDescription>
-                  Generate React + Tailwind code based on your selected recipe
+                  Export the selected DesignSpec as React + Tailwind code
                 </CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="flex items-center gap-4">
                   <Button
                     onClick={generateUI}
-                    disabled={generating || !intentSpec}
+                    disabled={generating || !designSpec}
                     size="lg"
                   >
                     {generating ? (
@@ -650,7 +651,7 @@ export default function App() {
                       <CardHeader>
                         <CardTitle>Facet Diff</CardTitle>
                         <CardDescription>
-                          Comparing intent vs generated output
+                          Comparing DesignSpec vs generated output
                         </CardDescription>
                       </CardHeader>
                       <CardContent>
