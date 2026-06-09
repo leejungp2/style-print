@@ -9,6 +9,7 @@ import { config } from './config'
 import {
   getReference,
   getReferences,
+  clearRuntimeData,
   saveReference,
   deleteReference,
   saveFacetPack,
@@ -25,6 +26,7 @@ import {
   adjustForContrast,
 } from './color-extractor'
 import { generateUICode } from './v0-client'
+import { writePreviewArtifact } from './preview-artifact'
 import {
   analyzeDesignFacets,
   auditGeneratedCodeWithOpenAI,
@@ -45,6 +47,7 @@ import type {
   GenerateResponse,
   GeneratedCode,
   IntentSpec,
+  PreviewBuildResponse,
   ProvenanceBadge,
   ReferenceAsset,
   RepairPlan,
@@ -61,6 +64,8 @@ const MVP_EXPORT_TARGET: IntentSpec['targetExport'] = {
 const app = Fastify({
   logger: { level: process.env.LOG_LEVEL || 'error' },
 })
+
+const shouldClearRuntimeOnStart = process.env.CLEAR_RUNTIME_ON_START === 'true'
 
 app.register(multipart, {
   limits: {
@@ -550,16 +555,26 @@ app.post('/api/generate/v0', async (request, reply) => {
         .send({ success: false, error: 'IntentSpec not found' } satisfies GenerateResponse)
     }
 
-    const code = await generateUICode(
+    const generated = await generateUICode(
       buildIntentExportPrompt(intentSpec, MVP_EXPORT_TARGET),
       stepMode || 'single'
     )
 
+    const generatedCodeId = nanoid()
+    const previewUrl = await writePreviewArtifact({
+      id: generatedCodeId,
+      code: generated.code,
+      files: generated.files,
+      entryFile: generated.entryFile,
+    })
     const generatedCode: GeneratedCode = {
-      id: nanoid(),
+      id: generatedCodeId,
       intentSpecId,
       mode: stepMode || 'single',
-      code,
+      code: generated.code,
+      files: generated.files,
+      entryFile: generated.entryFile,
+      previewUrl,
       createdAt: Date.now(),
     }
 
@@ -572,6 +587,39 @@ app.post('/api/generate/v0', async (request, reply) => {
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error',
     } satisfies GenerateResponse)
+  }
+})
+
+app.post('/api/preview/build', async (request, reply) => {
+  try {
+    const { id, code, files, entryFile } = request.body as {
+      id?: string
+      code?: string
+      files?: GeneratedCode['files']
+      entryFile?: string
+    }
+
+    if (!id || !code) {
+      return reply.status(400).send({
+        success: false,
+        error: 'No generated code provided',
+      } satisfies PreviewBuildResponse)
+    }
+
+    const previewUrl = await writePreviewArtifact({
+      id,
+      code,
+      files,
+      entryFile,
+    })
+
+    return reply.send({ success: true, previewUrl } satisfies PreviewBuildResponse)
+  } catch (error) {
+    request.log.error(error)
+    return reply.status(500).send({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    } satisfies PreviewBuildResponse)
   }
 })
 
@@ -623,6 +671,10 @@ app.post('/api/audit/analyze', async (request, reply) => {
 
 async function start() {
   try {
+    if (shouldClearRuntimeOnStart) {
+      await clearRuntimeStorage()
+    }
+
     await app.listen({ port: config.api.port, host: '0.0.0.0' })
   } catch (error) {
     app.log.error(error)
@@ -634,6 +686,12 @@ void start()
 
 async function ensureUploadDir() {
   await fs.mkdir(config.upload.dir, { recursive: true })
+}
+
+async function clearRuntimeStorage() {
+  await clearRuntimeData()
+  await fs.rm(config.upload.dir, { recursive: true, force: true })
+  await ensureUploadDir()
 }
 
 async function deleteStoredReferenceFile(reference: ReferenceAsset) {

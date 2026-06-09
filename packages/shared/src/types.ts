@@ -215,11 +215,19 @@ export type GenerationStep = {
   description: string
 }
 
+export type GeneratedCodeFile = {
+  path: string
+  code: string
+}
+
 export type GeneratedCode = {
   id: string
   intentSpecId: string
   mode: GenerationMode
   code: string
+  files?: GeneratedCodeFile[]
+  entryFile?: string
+  previewUrl?: string
   steps?: GenerationStep[]
   createdAt: number
 }
@@ -324,6 +332,17 @@ export type GenerateRequest = {
 export type GenerateResponse = {
   success: boolean
   generatedCode?: GeneratedCode
+  error?: string
+}
+
+export type PreviewBuildRequest = Pick<
+  GeneratedCode,
+  'id' | 'code' | 'files' | 'entryFile'
+>
+
+export type PreviewBuildResponse = {
+  success: boolean
+  previewUrl?: string
   error?: string
 }
 
