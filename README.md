@@ -97,7 +97,7 @@ cp .env.local.example .env.local
 OPENAI_API_KEY=sk-...
 OPENAI_MODEL=gpt-4.1-mini
 V0_API_KEY=...
-V0_MODEL=v0-1.5-md
+V0_MODEL=v0-mini
 API_PORT=4000
 WEB_ORIGIN=http://localhost:5173
 VITE_API_BASE_URL=

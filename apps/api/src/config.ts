@@ -31,7 +31,7 @@ export const config = {
   v0: {
     apiUrl: process.env.V0_API_URL || 'https://api.v0.dev/v1/chats',
     apiKey: process.env.V0_API_KEY || '',
-    model: process.env.V0_MODEL || 'v0-auto',
+    model: process.env.V0_MODEL || 'v0-mini',
   },
 }
 
