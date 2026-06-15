@@ -1,6 +1,7 @@
 import { promises as fs } from 'fs'
 import path from 'path'
 import { afterAll, afterEach, describe, expect, test } from 'vitest'
+import { config } from '../config'
 import { app } from '../server'
 import {
   readPreviewArtifactFile,
@@ -100,6 +101,34 @@ describe('/api/preview/build', () => {
     expect(body.success).toBe(true)
     expect(body.previewUrl).toMatch(
       /^http:\/\/localhost:\d+\/generated-previews\/route-preview-build\/index\.html\?t=\d+$/
+    )
+  })
+})
+
+describe('CORS headers', () => {
+  test('uses the configured frontend origin by default', async () => {
+    const response = await app.inject({
+      method: 'GET',
+      url: '/health',
+    })
+
+    expect(response.headers['access-control-allow-origin']).toBe(
+      config.api.webOrigin
+    )
+    expect(response.headers.vary).toBe('Origin')
+  })
+
+  test('echoes an allowed request origin', async () => {
+    const response = await app.inject({
+      method: 'GET',
+      url: '/health',
+      headers: {
+        origin: config.api.webOrigin,
+      },
+    })
+
+    expect(response.headers['access-control-allow-origin']).toBe(
+      config.api.webOrigin
     )
   })
 })

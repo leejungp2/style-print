@@ -79,7 +79,12 @@ app.register(multipart, {
 })
 
 app.addHook('onRequest', async (_request, reply) => {
-  reply.header('Access-Control-Allow-Origin', config.api.webOrigin)
+  const origin = getHeader(_request.headers, 'origin')?.replace(/\/$/, '')
+  const allowedOrigin =
+    origin && config.api.webOrigins.includes(origin) ? origin : config.api.webOrigin
+
+  reply.header('Access-Control-Allow-Origin', allowedOrigin)
+  reply.header('Vary', 'Origin')
   reply.header('Access-Control-Allow-Methods', 'GET,POST,DELETE,OPTIONS')
   reply.header('Access-Control-Allow-Headers', 'Content-Type,Authorization')
 })
