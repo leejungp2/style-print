@@ -483,16 +483,10 @@ export default function App() {
         'Generate UI failed'
       )
       if (data.success && data.generatedCode) {
-        if (data.intentSpec) {
-          setIntentSpec(data.intentSpec)
-          setGenerationChosen(data.intentSpec.chosen)
-          setGenerationBrief(data.intentSpec.generationBrief || generationBrief)
-        }
-        setGeneratedCode(data.generatedCode)
-        setLastGeneratedSignature(nextSignature)
-
-        // Audit the generated code
-        await auditCode(data.generatedCode.code, data.intentSpec?.id || intentSpec.id)
+        await finishGeneratedCode(data, nextSignature)
+      } else if (data.success && data.generationJobId) {
+        const completed = await pollGenerationJob(data.generationJobId)
+        await finishGeneratedCode(completed, nextSignature)
       } else {
         setGenerationError(
           data.error || `Generate UI failed (${response.status})`
@@ -504,6 +498,52 @@ export default function App() {
     } finally {
       setGenerating(false)
     }
+  }
+
+  const finishGeneratedCode = async (
+    data: GenerateResponse,
+    generationSignature: string
+  ) => {
+    if (!data.generatedCode) {
+      setGenerationError('Generate UI failed: no generated code returned')
+      return
+    }
+
+    if (data.intentSpec) {
+      setIntentSpec(data.intentSpec)
+      setGenerationChosen(data.intentSpec.chosen)
+      setGenerationBrief(data.intentSpec.generationBrief || generationBrief)
+    }
+
+    setGeneratedCode(data.generatedCode)
+    setLastGeneratedSignature(generationSignature)
+
+    await auditCode(data.generatedCode.code, data.intentSpec?.id || intentSpec?.id)
+  }
+
+  const pollGenerationJob = async (jobId: string): Promise<GenerateResponse> => {
+    const startedAt = Date.now()
+    const timeoutMs = 180_000
+
+    while (Date.now() - startedAt < timeoutMs) {
+      await wait(2_000)
+
+      const response = await fetch(apiUrl(`/api/generate/jobs/${jobId}`))
+      const data = await readApiResponse<GenerateResponse>(
+        response,
+        'Generate UI status check failed'
+      )
+
+      if (data.generatedCode) {
+        return data
+      }
+
+      if (!data.success || data.generationStatus === 'failed') {
+        throw new Error(data.error || 'Generate UI failed')
+      }
+    }
+
+    throw new Error('Generate UI timed out')
   }
 
   const auditCode = async (code: string, specId = intentSpec?.id) => {
@@ -1210,6 +1250,12 @@ function getApiErrorMessage(error: unknown, fallbackMessage: string): string {
   }
 
   return error instanceof Error ? error.message : fallbackMessage
+}
+
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms)
+  })
 }
 
 // Step Button Component

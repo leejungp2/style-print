@@ -48,6 +48,7 @@ import type {
   ExtractResponse,
   FacetDiff,
   FacetPack,
+  GenerationJobStatus,
   GenerateRequest,
   GenerateResponse,
   GeneratedCode,
@@ -71,6 +72,20 @@ export const app = Fastify({
 })
 
 const shouldClearRuntimeOnStart = process.env.CLEAR_RUNTIME_ON_START === 'true'
+
+type GenerationJob = {
+  id: string
+  status: GenerationJobStatus
+  intentSpecId: string
+  intentSpec?: IntentSpec
+  generatedCode?: GeneratedCode
+  error?: string
+  createdAt: number
+  updatedAt: number
+}
+
+const generationJobs = new Map<string, GenerationJob>()
+const GENERATION_JOB_TTL_MS = 30 * 60 * 1000
 
 app.register(multipart, {
   limits: {
@@ -551,9 +566,80 @@ app.post('/api/generate/v0', async (request, reply) => {
 
     await saveIntentSpec(intentSpec)
 
+    cleanupGenerationJobs()
+
+    const generationJobId = nanoid()
+    const job: GenerationJob = {
+      id: generationJobId,
+      status: 'pending',
+      intentSpecId,
+      intentSpec,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    }
+
+    generationJobs.set(generationJobId, job)
+
+    void runGenerationJob({
+      jobId: generationJobId,
+      intentSpec,
+      stepMode: stepMode || 'single',
+      headers: { ...request.headers },
+    }).catch((error) => {
+      request.log.error(error)
+    })
+
+    return reply.status(202).send({
+      success: true,
+      generationJobId,
+      generationStatus: job.status,
+      intentSpec,
+    } satisfies GenerateResponse)
+  } catch (error) {
+    request.log.error(error)
+    return reply.status(500).send({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    } satisfies GenerateResponse)
+  }
+})
+
+app.get('/api/generate/jobs/:jobId', async (request, reply) => {
+  const { jobId } = request.params as { jobId: string }
+  const job = generationJobs.get(jobId)
+
+  if (!job) {
+    return reply.status(404).send({
+      success: false,
+      error: 'Generation job not found',
+    } satisfies GenerateResponse)
+  }
+
+  return reply.status(job.status === 'failed' ? 500 : 200).send({
+    success: job.status !== 'failed',
+    generationJobId: job.id,
+    generationStatus: job.status,
+    generatedCode: job.generatedCode,
+    intentSpec: job.intentSpec,
+    error: job.error,
+  } satisfies GenerateResponse)
+})
+
+async function runGenerationJob(input: {
+  jobId: string
+  intentSpec: IntentSpec
+  stepMode: GenerateRequest['stepMode']
+  headers: Record<string, string | string[] | undefined>
+}) {
+  const job = generationJobs.get(input.jobId)
+  if (!job) return
+
+  updateGenerationJob(input.jobId, { status: 'running' })
+
+  try {
     const generated = await generateUICode(
-      buildIntentExportPrompt(intentSpec, MVP_EXPORT_TARGET),
-      stepMode || 'single'
+      buildIntentExportPrompt(input.intentSpec, MVP_EXPORT_TARGET),
+      input.stepMode
     )
 
     const generatedCodeId = nanoid()
@@ -567,17 +653,16 @@ app.post('/api/generate/v0', async (request, reply) => {
         files: generated.files,
         entryFile: generated.entryFile,
       })
-      previewUrl = toApiAssetUrl(previewPath, request.headers)
+      previewUrl = toApiAssetUrl(previewPath, input.headers)
     } catch (error) {
-      request.log.error(error)
       screenshotError =
         error instanceof Error ? `Preview unavailable: ${error.message}` : 'Preview unavailable'
     }
 
     const generatedCode: GeneratedCode = {
       id: generatedCodeId,
-      intentSpecId,
-      mode: stepMode || 'single',
+      intentSpecId: input.intentSpec.id,
+      mode: input.stepMode,
       code: generated.code,
       files: generated.files,
       entryFile: generated.entryFile,
@@ -589,20 +674,47 @@ app.post('/api/generate/v0', async (request, reply) => {
     await saveGeneratedCode(generatedCode)
 
     if (previewUrl) {
-      void captureAndSaveScreenshot(generatedCode, previewUrl, request.headers).catch((error) => {
-        request.log.error(error)
+      void captureAndSaveScreenshot(generatedCode, previewUrl, input.headers).catch((error) => {
+        app.log.error(error)
       })
     }
 
-    return reply.send({ success: true, generatedCode, intentSpec } satisfies GenerateResponse)
+    updateGenerationJob(input.jobId, {
+      status: 'succeeded',
+      generatedCode,
+      intentSpec: input.intentSpec,
+    })
   } catch (error) {
-    request.log.error(error)
-    return reply.status(500).send({
-      success: false,
+    updateGenerationJob(input.jobId, {
+      status: 'failed',
       error: error instanceof Error ? error.message : 'Unknown error',
-    } satisfies GenerateResponse)
+    })
   }
-})
+}
+
+function updateGenerationJob(
+  jobId: string,
+  patch: Partial<Omit<GenerationJob, 'id' | 'createdAt'>>
+) {
+  const job = generationJobs.get(jobId)
+  if (!job) return
+
+  generationJobs.set(jobId, {
+    ...job,
+    ...patch,
+    updatedAt: Date.now(),
+  })
+}
+
+function cleanupGenerationJobs() {
+  const now = Date.now()
+
+  for (const [jobId, job] of generationJobs.entries()) {
+    if (now - job.updatedAt > GENERATION_JOB_TTL_MS) {
+      generationJobs.delete(jobId)
+    }
+  }
+}
 
 app.post('/api/preview/build', async (request, reply) => {
   try {

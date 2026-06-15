@@ -357,8 +357,12 @@ export type GenerateRequest = {
   generationBrief?: GenerationBrief
 }
 
+export type GenerationJobStatus = 'pending' | 'running' | 'succeeded' | 'failed'
+
 export type GenerateResponse = {
   success: boolean
+  generationJobId?: string
+  generationStatus?: GenerationJobStatus
   generatedCode?: GeneratedCode
   intentSpec?: IntentSpec
   error?: string
