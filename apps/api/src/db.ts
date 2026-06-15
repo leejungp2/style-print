@@ -25,6 +25,13 @@ async function ensureDataDir() {
 // and re-parsing it from disk on every request. Writes update the cache and
 // persist to disk; reads are served from the cache after the first load.
 const cache = new Map<string, unknown[]>()
+const RUNTIME_FILES = [
+  'references.json',
+  'facet-packs.json',
+  'intents.json',
+  'generated-code.json',
+  'audit-reports.json',
+]
 
 // Generic read/write helpers
 async function readJSON<T>(filename: string): Promise<T[]> {
@@ -52,6 +59,14 @@ async function writeJSON<T>(filename: string, data: T[]): Promise<void> {
   await ensureDataDir()
   const filepath = path.join(DATA_DIR, filename)
   await fs.writeFile(filepath, JSON.stringify(data, null, 2))
+}
+
+export async function clearRuntimeData(): Promise<void> {
+  await ensureDataDir()
+
+  await Promise.all(
+    RUNTIME_FILES.map((filename) => writeJSON(filename, []))
+  )
 }
 
 // ============================================

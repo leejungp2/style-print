@@ -124,6 +124,28 @@ export type IntentExportTarget = {
   description: string
 }
 
+export type ScreenPlanType =
+  | 'home'
+  | 'hamburgerMenu'
+  | 'dashboard'
+  | 'list'
+  | 'detail'
+  | 'form'
+  | 'custom'
+
+export type ScreenPlanItem = {
+  id: string
+  type: ScreenPlanType
+  name: string
+  notes?: string
+}
+
+export type GenerationBrief = {
+  prompt: string
+  screens: ScreenPlanItem[]
+  variantCount: 1 | 2 | 3
+}
+
 export type IntentSpec = {
   id: string
   chosen: {
@@ -147,6 +169,7 @@ export type IntentSpec = {
   createdAt: number
   coherenceScore?: number
   targetExport: IntentExportTarget
+  generationBrief?: GenerationBrief
 }
 
 // ============================================
@@ -215,11 +238,21 @@ export type GenerationStep = {
   description: string
 }
 
+export type GeneratedCodeFile = {
+  path: string
+  code: string
+}
+
 export type GeneratedCode = {
   id: string
   intentSpecId: string
   mode: GenerationMode
   code: string
+  files?: GeneratedCodeFile[]
+  entryFile?: string
+  previewUrl?: string
+  screenshotUrl?: string
+  screenshotError?: string
   steps?: GenerationStep[]
   createdAt: number
 }
@@ -285,6 +318,7 @@ export type ExtractResponse = {
 
 export type CreateIntentRequest = {
   chosen: IntentSpec['chosen']
+  generationBrief?: GenerationBrief
 }
 
 export type CreateIntentResponse = {
@@ -316,14 +350,44 @@ export type ApplyRepairResponse = {
   error?: string
 }
 
+export type RecommendRecipesRequest = {
+  refIds?: string[]
+  facetPacks?: FacetPack[]
+  limit?: number
+}
+
+export type RecommendRecipesResponse = {
+  success: boolean
+  recipes?: Recipe[]
+  error?: string
+}
+
 export type GenerateRequest = {
   intentSpecId: string
   stepMode: GenerationMode
+  chosen?: IntentSpec['chosen']
+  generationBrief?: GenerationBrief
 }
+
+export type GenerationJobStatus = 'pending' | 'running' | 'succeeded' | 'failed'
 
 export type GenerateResponse = {
   success: boolean
+  generationJobId?: string
+  generationStatus?: GenerationJobStatus
   generatedCode?: GeneratedCode
+  intentSpec?: IntentSpec
+  error?: string
+}
+
+export type PreviewBuildRequest = Pick<
+  GeneratedCode,
+  'id' | 'code' | 'files' | 'entryFile'
+>
+
+export type PreviewBuildResponse = {
+  success: boolean
+  previewUrl?: string
   error?: string
 }
 

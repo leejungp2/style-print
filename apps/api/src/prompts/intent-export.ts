@@ -20,6 +20,35 @@ export function buildIntentExportPrompt(
     '',
   ]
 
+  if (intentSpec.generationBrief) {
+    const { prompt, screens, variantCount } = intentSpec.generationBrief
+
+    sections.push('## User Brief')
+    sections.push(
+      prompt.trim() ||
+        'No additional user brief was provided; rely on the IntentSpec facets.'
+    )
+    sections.push('')
+
+    sections.push('## Screen Plan')
+    if (screens.length > 0) {
+      screens.forEach((screen, index) => {
+        const notes = screen.notes?.trim()
+        sections.push(
+          `${index + 1}. ${screen.name} (${screen.type})${notes ? ` - ${notes}` : ''}`
+        )
+      })
+    } else {
+      sections.push('1. Main screen (home)')
+    }
+    sections.push(
+      `Variant count requested: ${variantCount}.`,
+      'If multiple screens are requested, implement them inside one default-exported React component using local state, tabs, segmented controls, or menu-driven screen switching instead of routing or multiple entry files.',
+      'If multiple variants are requested, present them as selectable concepts inside the same component.',
+      ''
+    )
+  }
+
   if (normalized.palette) {
     sections.push('## Color Palette', 'Use these exact colors with semantic roles:')
     Object.entries(normalized.palette).forEach(([role, hex]) => {
@@ -90,6 +119,7 @@ export function buildIntentExportPrompt(
     '6. Make the component responsive with mobile-first structure.',
     '7. Use semantic HTML and accessible labels for interactive elements.',
     '8. Preserve the IntentSpec style decisions instead of falling back to framework defaults.',
+    '9. Do not generate Next.js layout, metadata, routing, config, CSS, or analytics files.',
     '',
     'Generate the complete React component code now.'
   )

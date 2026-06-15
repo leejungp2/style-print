@@ -6,6 +6,11 @@ import { ConflictList } from '@/components/conflict-list'
 import { CodeViewer } from '@/components/code-viewer'
 import { AuditDiffTable } from '@/components/audit-diff-table'
 import { ProvenanceBadges } from '@/components/provenance-badges'
+import {
+  ManualFacetSelector,
+  manualFacetFields,
+  type ManualFacetKey,
+} from '@/components/manual-facet-selector'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -13,6 +18,14 @@ import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
 import { Separator } from '@/components/ui/separator'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { Label } from '@/components/ui/label'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { apiUrl } from '@/lib/api'
 import {
   Upload,
@@ -23,26 +36,59 @@ import {
   Check,
   ChevronRight,
   Loader2,
+  Plus,
+  Trash2,
 } from 'lucide-react'
 import type {
   ReferenceAsset,
   FacetPack,
   IntentSpec,
+  GenerationBrief,
+  ScreenPlanItem,
+  ScreenPlanType,
   ConflictCard,
   RepairPlan,
   GeneratedCode,
   AuditReport,
   Recipe,
+  GenerateResponse,
+  AuditResponse,
+  RecommendRecipesResponse,
 } from '@/lib/types'
 
-// Code-split the live preview: the heavy @codesandbox/sandpack-react bundle is
-// only fetched when the preview is actually rendered, keeping the main bundle
-// (and initial memory footprint) small.
+// Code-split the generated preview so the upload/recipe flow stays light.
 const PreviewPane = lazy(() =>
   import('@/components/preview-pane').then((m) => ({ default: m.PreviewPane }))
 )
 
 type Step = 'upload' | 'recipe' | 'generate'
+
+const screenPlanOptions: { value: ScreenPlanType; label: string }[] = [
+  { value: 'home', label: 'Home' },
+  { value: 'hamburgerMenu', label: 'Hamburger Menu' },
+  { value: 'dashboard', label: 'Dashboard' },
+  { value: 'list', label: 'List' },
+  { value: 'detail', label: 'Detail' },
+  { value: 'form', label: 'Form' },
+  { value: 'custom', label: 'Custom' },
+]
+
+function createScreenPlanItem(type: ScreenPlanType = 'home'): ScreenPlanItem {
+  const option = screenPlanOptions.find((item) => item.value === type)
+  return {
+    id: `screen-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    type,
+    name: option?.label || 'Custom Screen',
+  }
+}
+
+function createDefaultGenerationBrief(): GenerationBrief {
+  return {
+    prompt: '',
+    screens: [createScreenPlanItem('home')],
+    variantCount: 1,
+  }
+}
 
 export default function App() {
   // Step state
@@ -57,6 +103,9 @@ export default function App() {
   // Recipe state
   const [recipes, setRecipes] = useState<Recipe[]>([])
   const [selectedRecipe, setSelectedRecipe] = useState<Recipe | null>(null)
+  const [recommendingRecipes, setRecommendingRecipes] = useState(false)
+  const [recipeError, setRecipeError] = useState<string | null>(null)
+  const [manualChosen, setManualChosen] = useState<IntentSpec['chosen']>({})
   const [intentSpec, setIntentSpec] = useState<IntentSpec | null>(null)
 
   // Conflict state
@@ -65,14 +114,43 @@ export default function App() {
   const [coherenceScore, setCoherenceScore] = useState<number>(0)
 
   // Generation state
+  const [generationChosen, setGenerationChosen] = useState<IntentSpec['chosen']>({})
+  const [generationBrief, setGenerationBrief] = useState<GenerationBrief>(
+    createDefaultGenerationBrief
+  )
+  const [lastGeneratedSignature, setLastGeneratedSignature] = useState<string | null>(null)
   const [generating, setGenerating] = useState(false)
   const [generatedCode, setGeneratedCode] = useState<GeneratedCode | null>(null)
   const [auditReport, setAuditReport] = useState<AuditReport | null>(null)
+  const [generationError, setGenerationError] = useState<string | null>(null)
 
   // Load existing references on mount
   useEffect(() => {
     loadReferences()
   }, [])
+
+  useEffect(() => {
+    if (facetPacks.length === 0) return
+
+    setManualChosen((prev) => {
+      const refIds = facetPacks.map((pack) => pack.refId)
+      const fallbackRefId = refIds[0]
+      const next: IntentSpec['chosen'] = {}
+
+      manualFacetFields.forEach(({ key }) => {
+        next[key] = prev[key] && refIds.includes(prev[key]!) ? prev[key] : fallbackRefId
+      })
+
+      return next
+    })
+  }, [facetPacks])
+
+  useEffect(() => {
+    if (intentSpec) {
+      setGenerationChosen(intentSpec.chosen)
+      setGenerationBrief(intentSpec.generationBrief || createDefaultGenerationBrief())
+    }
+  }, [intentSpec?.id])
 
   const loadReferences = async () => {
     try {
@@ -100,6 +178,7 @@ export default function App() {
 
     setExtracting(true)
     setExtractionProgress(0)
+    setRecipeError(null)
 
     const newPacks: FacetPack[] = []
     for (let i = 0; i < references.length; i++) {
@@ -128,91 +207,59 @@ export default function App() {
       setExtractionProgress(((i + 1) / references.length) * 100)
     }
 
-    setFacetPacks((prev) => [...prev, ...newPacks])
+    const nextPacks = [...facetPacks, ...newPacks]
+    setFacetPacks(nextPacks)
     setExtracting(false)
 
-    // Generate recipes after extraction
-    if (newPacks.length > 0 || facetPacks.length > 0) {
-      generateRecipes([...facetPacks, ...newPacks])
+    if (nextPacks.length > 0) {
+      await loadRecommendedRecipes(nextPacks)
     }
   }
 
-  const generateRecipes = (packs: FacetPack[]) => {
-    // Simple recipe generation: create 3 combinations
-    if (packs.length < 1) return
-
-    const newRecipes: Recipe[] = []
-
-    // Recipe 1: Use first reference for all facets
-    if (packs[0]) {
-      newRecipes.push({
-        id: 'recipe-1',
-        name: 'Unified Style',
-        chosen: {
-          colorRefId: packs[0].refId,
-          typographyRefId: packs[0].refId,
-          layoutRefId: packs[0].refId,
-          spacingRefId: packs[0].refId,
-          componentStyleRefId: packs[0].refId,
-        },
-        coherenceScore: 95,
-        description: 'All facets from the same reference for maximum consistency',
-      })
+  const loadRecommendedRecipes = async (packs: FacetPack[]) => {
+    if (packs.length < 1) {
+      setRecipes([])
+      return
     }
 
-    // Recipe 2: Mix if multiple references
-    if (packs.length >= 2) {
-      newRecipes.push({
-        id: 'recipe-2',
-        name: 'Color Accent Mix',
-        chosen: {
-          colorRefId: packs[1].refId,
-          typographyRefId: packs[0].refId,
-          layoutRefId: packs[0].refId,
-          spacingRefId: packs[0].refId,
-          componentStyleRefId: packs[1].refId,
-        },
-        coherenceScore: 82,
-        description: 'Typography and layout from Ref 1, colors and style from Ref 2',
-      })
-    }
+    setRecommendingRecipes(true)
+    setRecipeError(null)
+    setRecipes([])
 
-    // Recipe 3: Different mix
-    if (packs.length >= 3) {
-      newRecipes.push({
-        id: 'recipe-3',
-        name: 'Layout Focus',
-        chosen: {
-          colorRefId: packs[0].refId,
-          typographyRefId: packs[1].refId,
-          layoutRefId: packs[2].refId,
-          spacingRefId: packs[2].refId,
-          componentStyleRefId: packs[0].refId,
-        },
-        coherenceScore: 75,
-        description: 'Layout from Ref 3, typography from Ref 2, colors from Ref 1',
+    try {
+      const response = await fetch(apiUrl('/api/recipes/recommend'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ facetPacks: packs }),
       })
-    } else if (packs.length >= 2) {
-      newRecipes.push({
-        id: 'recipe-3',
-        name: 'Typography Focus',
-        chosen: {
-          colorRefId: packs[0].refId,
-          typographyRefId: packs[1].refId,
-          layoutRefId: packs[1].refId,
-          spacingRefId: packs[0].refId,
-          componentStyleRefId: packs[0].refId,
-        },
-        coherenceScore: 78,
-        description: 'Typography and layout from Ref 2, everything else from Ref 1',
-      })
-    }
+      const data = await readApiResponse<RecommendRecipesResponse>(
+        response,
+        'Recommend recipes failed'
+      )
 
-    setRecipes(newRecipes)
+      if (data.success && data.recipes) {
+        setRecipes(data.recipes)
+      } else {
+        setRecipeError('추천 생성 실패')
+      }
+    } catch (err) {
+      console.error('Failed to recommend recipes:', err)
+      setRecipeError('추천 생성 실패')
+    } finally {
+      setRecommendingRecipes(false)
+    }
   }
 
   const selectRecipe = async (recipe: Recipe) => {
     setSelectedRecipe(recipe)
+    setIntentSpec(null)
+    setConflicts([])
+    setRepairs([])
+    setCoherenceScore(recipe.coherenceScore)
+    setGeneratedCode(null)
+    setAuditReport(null)
+    setGenerationError(null)
+    setLastGeneratedSignature(null)
 
     try {
       const response = await fetch(apiUrl('/api/intents/create'), {
@@ -223,14 +270,116 @@ export default function App() {
       const data = await response.json()
       if (data.success && data.intentSpec) {
         setIntentSpec(data.intentSpec)
-        evaluateIntentSpec(data.intentSpec.id)
+        setGenerationChosen(data.intentSpec.chosen)
+        evaluateIntentSpec(data.intentSpec.id, recipe.id)
       }
     } catch (err) {
       console.error('Failed to create intent spec:', err)
     }
   }
 
-  const evaluateIntentSpec = async (specId: string) => {
+  const updateRecipeCoherence = (recipeId: string | undefined, score: number) => {
+    setSelectedRecipe((prev) => {
+      if (!prev || (recipeId && prev.id !== recipeId)) {
+        return prev
+      }
+
+      return {
+        ...prev,
+        coherenceScore: score,
+      }
+    })
+
+    if (recipeId) {
+      setRecipes((prev) =>
+        prev.map((recipe) =>
+          recipe.id === recipeId ? { ...recipe, coherenceScore: score } : recipe
+        )
+      )
+    }
+  }
+
+  const updateManualFacet = (key: ManualFacetKey, refId: string) => {
+    setManualChosen((prev) => ({
+      ...prev,
+      [key]: refId,
+    }))
+  }
+
+  const updateGenerationFacet = (key: ManualFacetKey, refId: string) => {
+    setGenerationChosen((prev) => ({
+      ...prev,
+      [key]: refId,
+    }))
+  }
+
+  const updateGenerationPrompt = (prompt: string) => {
+    setGenerationBrief((prev) => ({ ...prev, prompt }))
+  }
+
+  const updateVariantCount = (value: string) => {
+    const parsed = Number(value)
+    const variantCount = parsed === 2 || parsed === 3 ? parsed : 1
+    setGenerationBrief((prev) => ({ ...prev, variantCount }))
+  }
+
+  const addScreenPlanItem = () => {
+    setGenerationBrief((prev) => ({
+      ...prev,
+      screens: [...prev.screens, createScreenPlanItem('custom')],
+    }))
+  }
+
+  const updateScreenPlanItem = (
+    id: string,
+    patch: Partial<Omit<ScreenPlanItem, 'id'>>
+  ) => {
+    setGenerationBrief((prev) => ({
+      ...prev,
+      screens: prev.screens.map((screen) => {
+        if (screen.id !== id) return screen
+
+        const next = { ...screen, ...patch }
+        if (patch.type && screen.name === getScreenTypeLabel(screen.type)) {
+          next.name = getScreenTypeLabel(patch.type)
+        }
+        return next
+      }),
+    }))
+  }
+
+  const removeScreenPlanItem = (id: string) => {
+    setGenerationBrief((prev) => ({
+      ...prev,
+      screens:
+        prev.screens.length > 1
+          ? prev.screens.filter((screen) => screen.id !== id)
+          : prev.screens,
+    }))
+  }
+
+  const selectManualRecipe = () => {
+    const fallbackRefId = facetPacks[0]?.refId
+    if (!fallbackRefId) return
+
+    const chosen = manualFacetFields.reduce<IntentSpec['chosen']>(
+      (acc, { key }) => ({
+        ...acc,
+        [key]: manualChosen[key] || fallbackRefId,
+      }),
+      {}
+    )
+
+    selectRecipe({
+      id: 'manual-recipe',
+      name: 'Custom Mix',
+      chosen,
+      coherenceScore: 0,
+      description: 'Facet sources selected manually',
+    })
+  }
+
+  const evaluateIntentSpec = async (specId: string, recipeId?: string) => {
     try {
       const response = await fetch(apiUrl('/api/intents/evaluate'), {
         method: 'POST',
@@ -239,9 +388,11 @@ export default function App() {
       })
       const data = await response.json()
       if (data.success) {
+        const score = data.coherenceScore || 0
         setConflicts(data.conflicts || [])
         setRepairs(data.repairs || [])
-        setCoherenceScore(data.coherenceScore || 0)
+        setCoherenceScore(score)
+        updateRecipeCoherence(recipeId, score)
       }
     } catch (err) {
       console.error('Failed to evaluate intent spec:', err)
@@ -263,7 +414,7 @@ export default function App() {
       const data = await response.json()
       if (data.success && data.intentSpec) {
         setIntentSpec(data.intentSpec)
-        evaluateIntentSpec(data.intentSpec.id)
+        evaluateIntentSpec(data.intentSpec.id, selectedRecipe?.id)
       }
     } catch (err) {
       console.error('Failed to apply repair:', err)
@@ -273,7 +424,13 @@ export default function App() {
   const generateUI = async () => {
     if (!intentSpec) return
 
+    const nextChosen = resolveGenerationChosen(generationChosen, intentSpec.chosen)
+    const nextSignature = buildGenerationSignature(nextChosen, generationBrief)
+
     setGenerating(true)
+    setGenerationError(null)
+    setGeneratedCode(null)
+    setAuditReport(null)
     try {
       const response = await fetch(apiUrl('/api/generate/v0'), {
         method: 'POST',
@@ -281,35 +438,94 @@ export default function App() {
         body: JSON.stringify({
           intentSpecId: intentSpec.id,
           stepMode: 'single',
+          chosen: nextChosen,
+          generationBrief,
         }),
       })
-      const data = await response.json()
+      const data = await readApiResponse<GenerateResponse>(
+        response,
+        'Generate UI failed'
+      )
       if (data.success && data.generatedCode) {
-        setGeneratedCode(data.generatedCode)
-
-        // Audit the generated code
-        await auditCode(data.generatedCode.code)
+        await finishGeneratedCode(data, nextSignature)
+      } else if (data.success && data.generationJobId) {
+        const completed = await pollGenerationJob(data.generationJobId)
+        await finishGeneratedCode(completed, nextSignature)
+      } else {
+        setGenerationError(
+          data.error || `Generate UI failed (${response.status})`
+        )
       }
     } catch (err) {
       console.error('Failed to generate UI:', err)
+      setGenerationError(getApiErrorMessage(err, 'Generate UI failed'))
     } finally {
       setGenerating(false)
     }
   }
 
-  const auditCode = async (code: string) => {
-    if (!intentSpec) return
+  const finishGeneratedCode = async (
+    data: GenerateResponse,
+    generationSignature: string
+  ) => {
+    if (!data.generatedCode) {
+      setGenerationError('Generate UI failed: no generated code returned')
+      return
+    }
+
+    if (data.intentSpec) {
+      setIntentSpec(data.intentSpec)
+      setGenerationChosen(data.intentSpec.chosen)
+      setGenerationBrief(data.intentSpec.generationBrief || generationBrief)
+    }
+
+    setGeneratedCode(data.generatedCode)
+    setLastGeneratedSignature(generationSignature)
+
+    await auditCode(data.generatedCode.code, data.intentSpec?.id || intentSpec?.id)
+  }
+
+  const pollGenerationJob = async (jobId: string): Promise<GenerateResponse> => {
+    const startedAt = Date.now()
+    const timeoutMs = 180_000
+
+    while (Date.now() - startedAt < timeoutMs) {
+      await wait(2_000)
+
+      const response = await fetch(apiUrl(`/api/generate/jobs/${jobId}`))
+      const data = await readApiResponse<GenerateResponse>(
+        response,
+        'Generate UI status check failed'
+      )
+
+      if (data.generatedCode) {
+        return data
+      }
+
+      if (!data.success || data.generationStatus === 'failed') {
+        throw new Error(data.error || 'Generate UI failed')
+      }
+    }
+
+    throw new Error('Generate UI timed out')
+  }
+
+  const auditCode = async (code: string, specId = intentSpec?.id) => {
+    if (!specId) return
 
     try {
       const response = await fetch(apiUrl('/api/audit/analyze'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          intentSpecId: intentSpec.id,
+          intentSpecId: specId,
           code,
         }),
       })
-      const data = await response.json()
+      const data = await readApiResponse<AuditResponse>(
+        response,
+        'Audit code failed'
+      )
       if (data.success && data.report) {
         setAuditReport(data.report)
       }
@@ -320,6 +536,23 @@ export default function App() {
 
   const canProceedToRecipe = references.length > 0 && facetPacks.length > 0
   const canProceedToGenerate = intentSpec !== null
+  const resolvedGenerationChosen = intentSpec
+    ? resolveGenerationChosen(generationChosen, intentSpec.chosen)
+    : generationChosen
+  const currentGenerationSignature = buildGenerationSignature(
+    resolvedGenerationChosen,
+    generationBrief
+  )
+  const generatedIsOutdated = Boolean(
+    generatedCode &&
+      lastGeneratedSignature &&
+      currentGenerationSignature !== lastGeneratedSignature
+  )
+  const generateButtonLabel = !generatedCode
+    ? 'Generate UI'
+    : generatedIsOutdated
+      ? 'Regenerate with edits'
+      : 'Regenerate UI'
 
   return (
     <div className="min-h-screen bg-background">
@@ -486,12 +719,42 @@ export default function App() {
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <RecipeCards
-                    recipes={recipes}
-                    selectedRecipe={selectedRecipe}
-                    onSelectRecipe={selectRecipe}
-                    references={references}
+                  {recommendingRecipes ? (
+                    <div className="flex items-center justify-center gap-2 py-8 text-muted-foreground">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <span>Ranking recipes...</span>
+                    </div>
+                  ) : recipeError ? (
+                    <div className="flex items-center justify-center gap-2 py-8 text-destructive">
+                      <AlertTriangle className="h-4 w-4" />
+                      <span>{recipeError}</span>
+                    </div>
+                  ) : (
+                    <RecipeCards
+                      recipes={recipes}
+                      selectedRecipe={selectedRecipe}
+                      onSelectRecipe={selectRecipe}
+                      references={references}
+                      facetPacks={facetPacks}
+                    />
+                  )}
+                </CardContent>
+              </Card>
+
+              <Card className="mt-6">
+                <CardHeader>
+                  <CardTitle>Custom Facet Sources</CardTitle>
+                  <CardDescription>
+                    Choose which reference each facet should come from
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <ManualFacetSelector
+                    chosen={manualChosen}
                     facetPacks={facetPacks}
+                    references={references}
+                    onChange={updateManualFacet}
+                    onApply={selectManualRecipe}
                   />
                 </CardContent>
               </Card>
@@ -541,16 +804,28 @@ export default function App() {
                           {selectedRecipe.description}
                         </p>
                       </div>
+                      <div>
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-sm font-medium">Coherence</span>
+                          <span className="text-sm font-semibold">
+                            {selectedRecipe.coherenceScore}%
+                          </span>
+                        </div>
+                        <Progress value={selectedRecipe.coherenceScore} />
+                      </div>
                       <Separator />
                       <div className="space-y-2 text-sm">
                         {Object.entries(selectedRecipe.chosen).map(([key, refId]) => {
                           const ref = references.find((r) => r.id === refId)
+                          const refIndex = ref
+                            ? references.findIndex((reference) => reference.id === ref.id) + 1
+                            : null
                           return (
                             <div key={key} className="flex justify-between">
                               <span className="text-muted-foreground">
                                 {key.replace('RefId', '')}
                               </span>
-                              <span>Ref #{refId?.slice(0, 6)}</span>
+                              <span>{refIndex ? `Ref ${refIndex}` : refId?.slice(0, 6)}</span>
                             </div>
                           )
                         })}
@@ -582,16 +857,84 @@ export default function App() {
             {/* Generation Controls */}
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Wand2 className="h-5 w-5" />
-                  Export UI Code
-                </CardTitle>
-                <CardDescription>
-                  Export the selected IntentSpec as React + Tailwind code
-                </CardDescription>
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <CardTitle className="flex items-center gap-2">
+                      <Wand2 className="h-5 w-5" />
+                      Export UI Code
+                    </CardTitle>
+                    <CardDescription>
+                      Export the selected IntentSpec as React + Tailwind code
+                    </CardDescription>
+                  </div>
+                  {generatedCode && (
+                    <Badge variant={generatedIsOutdated ? 'warning' : 'success'}>
+                      {generatedIsOutdated ? 'Outdated' : 'Current'}
+                    </Badge>
+                  )}
+                </div>
               </CardHeader>
-              <CardContent>
-                <div className="flex items-center gap-4">
+              <CardContent className="space-y-6">
+                <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_180px]">
+                  <div className="space-y-2">
+                    <Label htmlFor="generation-prompt">Prompt</Label>
+                    <textarea
+                      id="generation-prompt"
+                      value={generationBrief.prompt}
+                      onChange={(event) => updateGenerationPrompt(event.target.value)}
+                      placeholder="Describe the product, audience, content, interactions, or constraints you want in the generated UI."
+                      className="min-h-[120px] w-full resize-y rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="variant-count">Variants</Label>
+                    <Select
+                      value={String(generationBrief.variantCount)}
+                      onValueChange={updateVariantCount}
+                    >
+                      <SelectTrigger id="variant-count">
+                        <SelectValue placeholder="Select count" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="1">1 concept</SelectItem>
+                        <SelectItem value="2">2 concepts</SelectItem>
+                        <SelectItem value="3">3 concepts</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                <ScreenPlanEditor
+                  screens={generationBrief.screens}
+                  onAdd={addScreenPlanItem}
+                  onChange={updateScreenPlanItem}
+                  onRemove={removeScreenPlanItem}
+                />
+
+                <div className="space-y-3">
+                  <div>
+                    <h3 className="text-sm font-medium">Reference Sources</h3>
+                    <p className="text-sm text-muted-foreground">
+                      Choose which uploaded reference drives each generated facet.
+                    </p>
+                  </div>
+                  <ManualFacetSelector
+                    chosen={resolvedGenerationChosen}
+                    facetPacks={facetPacks}
+                    references={references}
+                    onChange={updateGenerationFacet}
+                  />
+                </div>
+
+                {generatedCode && generatedIsOutdated && (
+                  <div className="rounded-md border border-yellow-200 bg-yellow-50 p-3 text-sm text-yellow-800 dark:border-yellow-900 dark:bg-yellow-950 dark:text-yellow-200">
+                    The current generated result was created from older settings.
+                  </div>
+                )}
+
+                <Separator />
+
+                <div className="flex flex-wrap items-center gap-4">
                   <Button
                     onClick={generateUI}
                     disabled={generating || !intentSpec}
@@ -605,14 +948,22 @@ export default function App() {
                     ) : (
                       <>
                         <Code className="mr-2 h-4 w-4" />
-                        Generate UI
+                        {generateButtonLabel}
                       </>
                     )}
                   </Button>
                   <span className="text-sm text-muted-foreground">
-                    Mode: Single Generation (Full UI at once)
+                    {generating
+                      ? 'Waiting for v0 response...'
+                      : 'Mode: Single Generation (Full UI at once)'}
                   </span>
                 </div>
+                {generationError && (
+                  <div className="mt-4 flex items-start gap-2 rounded-md bg-destructive/10 p-3 text-sm text-destructive">
+                    <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+                    <span>{generationError}</span>
+                  </div>
+                )}
               </CardContent>
             </Card>
 
@@ -620,19 +971,55 @@ export default function App() {
             {generatedCode && (
               <Tabs defaultValue="preview" className="w-full">
                 <TabsList>
-                  <TabsTrigger value="preview">Live Preview</TabsTrigger>
+                  <TabsTrigger value="preview">Result</TabsTrigger>
                   <TabsTrigger value="code">Code</TabsTrigger>
                   <TabsTrigger value="audit">Audit & Provenance</TabsTrigger>
                 </TabsList>
                 <TabsContent value="preview">
                   <Card>
-                    <CardContent className="pt-6">
+                    <CardContent className="space-y-4 pt-6">
+                      <div className="flex flex-wrap items-start gap-4 rounded-md border bg-muted/30 p-3">
+                        {generatedCode.screenshotUrl ? (
+                          <img
+                            src={generatedCode.screenshotUrl}
+                            alt="Generated UI screenshot"
+                            className="h-28 w-44 rounded border bg-white object-cover"
+                          />
+                        ) : (
+                          <div className="flex h-28 w-44 items-center justify-center rounded border bg-background text-xs text-muted-foreground">
+                            No screenshot
+                          </div>
+                        )}
+                        <div className="min-w-0 flex-1 text-sm">
+                          <div className="mb-2 flex flex-wrap items-center gap-2">
+                            <span className="font-medium">Preview Snapshot</span>
+                            <Badge variant={generatedIsOutdated ? 'warning' : 'outline'}>
+                              {generatedIsOutdated ? 'Outdated' : 'From generated code'}
+                            </Badge>
+                          </div>
+                          {generatedCode.screenshotError ? (
+                            <p className="text-muted-foreground">
+                              Screenshot unavailable: {generatedCode.screenshotError}
+                            </p>
+                          ) : (
+                            <p className="text-muted-foreground">
+                              Captured from the generated preview artifact.
+                            </p>
+                          )}
+                        </div>
+                      </div>
                       <Suspense
                         fallback={
                           <p className="text-muted-foreground">Loading preview…</p>
                         }
                       >
-                        <PreviewPane code={generatedCode.code} />
+                        <PreviewPane
+                          id={generatedCode.id}
+                          code={generatedCode.code}
+                          files={generatedCode.files}
+                          entryFile={generatedCode.entryFile}
+                          previewUrl={generatedCode.previewUrl}
+                        />
                       </Suspense>
                     </CardContent>
                   </Card>
@@ -692,6 +1079,159 @@ export default function App() {
       </main>
     </div>
   )
+}
+
+function ScreenPlanEditor({
+  screens,
+  onAdd,
+  onChange,
+  onRemove,
+}: {
+  screens: ScreenPlanItem[]
+  onAdd: () => void
+  onChange: (id: string, patch: Partial<Omit<ScreenPlanItem, 'id'>>) => void
+  onRemove: (id: string) => void
+}) {
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-medium">Screen Plan</h3>
+          <p className="text-sm text-muted-foreground">
+            Define the screens the generated component should include.
+          </p>
+        </div>
+        <Button type="button" variant="outline" size="sm" onClick={onAdd}>
+          <Plus className="mr-2 h-4 w-4" />
+          Add Screen
+        </Button>
+      </div>
+      <div className="space-y-3">
+        {screens.map((screen, index) => (
+          <div key={screen.id} className="grid gap-3 rounded-md border p-3 lg:grid-cols-[180px_1fr_1fr_auto]">
+            <div className="space-y-2">
+              <Label htmlFor={`${screen.id}-type`}>Type</Label>
+              <Select
+                value={screen.type}
+                onValueChange={(type) =>
+                  onChange(screen.id, { type: type as ScreenPlanType })
+                }
+              >
+                <SelectTrigger id={`${screen.id}-type`}>
+                  <SelectValue placeholder="Select type" />
+                </SelectTrigger>
+                <SelectContent>
+                  {screenPlanOptions.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor={`${screen.id}-name`}>Name</Label>
+              <input
+                id={`${screen.id}-name`}
+                value={screen.name}
+                onChange={(event) => onChange(screen.id, { name: event.target.value })}
+                placeholder={`Screen ${index + 1}`}
+                className="h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor={`${screen.id}-notes`}>Notes</Label>
+              <input
+                id={`${screen.id}-notes`}
+                value={screen.notes || ''}
+                onChange={(event) => onChange(screen.id, { notes: event.target.value })}
+                placeholder="Optional"
+                className="h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+              />
+            </div>
+            <div className="flex items-end">
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                onClick={() => onRemove(screen.id)}
+                disabled={screens.length === 1}
+                aria-label={`Remove ${screen.name || `screen ${index + 1}`}`}
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function resolveGenerationChosen(
+  chosen: IntentSpec['chosen'],
+  fallback: IntentSpec['chosen']
+): IntentSpec['chosen'] {
+  return manualFacetFields.reduce<IntentSpec['chosen']>(
+    (acc, { key }) => ({
+      ...acc,
+      [key]: chosen[key] || fallback[key],
+    }),
+    {}
+  )
+}
+
+function buildGenerationSignature(
+  chosen: IntentSpec['chosen'],
+  brief: GenerationBrief
+): string {
+  return JSON.stringify({
+    chosen,
+    brief: {
+      prompt: brief.prompt.trim(),
+      variantCount: brief.variantCount,
+      screens: brief.screens.map((screen) => ({
+        type: screen.type,
+        name: screen.name.trim(),
+        notes: screen.notes?.trim() || '',
+      })),
+    },
+  })
+}
+
+function getScreenTypeLabel(type: ScreenPlanType): string {
+  return screenPlanOptions.find((option) => option.value === type)?.label || 'Custom'
+}
+
+async function readApiResponse<T>(
+  response: Response,
+  fallbackMessage: string
+): Promise<T> {
+  const text = await response.text()
+
+  if (!text) {
+    throw new Error(`${fallbackMessage}: empty response (${response.status})`)
+  }
+
+  try {
+    return JSON.parse(text) as T
+  } catch {
+    throw new Error(`${fallbackMessage}: invalid JSON response (${response.status})`)
+  }
+}
+
+function getApiErrorMessage(error: unknown, fallbackMessage: string): string {
+  if (error instanceof TypeError) {
+    return `${fallbackMessage}: API server connection failed`
+  }
+
+  return error instanceof Error ? error.message : fallbackMessage
+}
+
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms)
+  })
 }
 
 // Step Button Component
