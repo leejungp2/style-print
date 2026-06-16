@@ -206,6 +206,23 @@ export type CoherenceJudgePromptVersion = {
   createdAt: number
 }
 
+export type CoherenceJudgeRating = 'strong' | 'adequate' | 'weak' | 'fail'
+
+export type CoherenceJudgeDimensionRating = {
+  dimension: CoherenceDimension
+  rating: CoherenceJudgeRating
+  rationale: string
+  affectedKeys: string[]
+}
+
+export type CoherenceJudgeCheck = {
+  id: string
+  dimension: CoherenceDimension
+  met: boolean
+  rationale: string
+  affectedKeys: string[]
+}
+
 export type CoherenceJudgeResult = {
   id: string
   intentSpecId: string
@@ -214,6 +231,8 @@ export type CoherenceJudgeResult = {
   score: number
   dimensions: CoherenceDimensionScores
   findings: CoherenceFinding[]
+  dimensionRatings?: CoherenceJudgeDimensionRating[]
+  checklist?: CoherenceJudgeCheck[]
   confidence: number
   createdAt: number
 }
