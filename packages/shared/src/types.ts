@@ -406,7 +406,7 @@ export type AuditReport = {
 // ============================================
 
 export type UploadRequest = {
-  files: string[] // base64 dataUrls
+  files: File[] // Runtime request is multipart/form-data; base64 JSON upload is not supported.
 }
 
 export type UploadResponse = {
