@@ -5,6 +5,7 @@ import { createWriteStream } from 'fs'
 import { promises as fs } from 'fs'
 import path from 'path'
 import { pipeline } from 'stream/promises'
+import sharp from 'sharp'
 import { config } from './config'
 import {
   getReference,
@@ -53,6 +54,7 @@ import type {
   ExtractResponse,
   FacetDiff,
   FacetPack,
+  FacetType,
   GenerationJobStatus,
   GenerateRequest,
   GenerateResponse,
@@ -65,6 +67,7 @@ import type {
   RecommendRecipesResponse,
   Recipe,
   SpacingFacetToken,
+  StyleContext,
   SubmitCoherenceFeedbackRequest,
   SubmitCoherenceFeedbackResponse,
   UploadResponse,
@@ -211,12 +214,13 @@ app.post('/api/references/upload', async (request, reply) => {
         throw error
       }
 
+      const metadata = await readStoredImageMetadata(filePath)
       const reference: ReferenceAsset = {
         id,
         filename,
         mime,
-        width: 0,
-        height: 0,
+        width: metadata.width,
+        height: metadata.height,
         url,
         storagePath,
         createdAt: Date.now(),
@@ -318,7 +322,10 @@ app.post('/api/facets/extract', async (request, reply) => {
       colorTokens.map((token) => [token.value.role, token.value.hex])
     )
 
-    const designFacets = await analyzeDesignFacets(imageDataUrl, colorPalette)
+    const designFacets = await analyzeDesignFacets(imageDataUrl, colorPalette, {
+      width: reference.width,
+      height: reference.height,
+    })
 
     const typographyValue = designFacets.typography
     const typographyToken = {
@@ -369,6 +376,12 @@ app.post('/api/facets/extract', async (request, reply) => {
         componentStyleToken,
       ],
       summary: { moodKeywords: designFacets.moodKeywords },
+      source: {
+        filename: reference.filename,
+        mime: reference.mime,
+        width: reference.width,
+        height: reference.height,
+      },
       createdAt: Date.now(),
     }
 
@@ -397,7 +410,7 @@ app.post('/api/intents/create', async (request, reply) => {
         .send({ success: false, error: 'No chosen facets provided' } satisfies CreateIntentResponse)
     }
 
-    const { normalized, provenance } = await buildIntentFromChosen(chosen)
+    const { normalized, provenance, styleContext } = await buildIntentFromChosen(chosen)
 
     const intentSpec: IntentSpec = {
       id: nanoid(),
@@ -410,6 +423,7 @@ app.post('/api/intents/create', async (request, reply) => {
       createdAt: Date.now(),
       targetExport: MVP_EXPORT_TARGET,
       generationBrief,
+      styleContext,
     }
 
     await saveIntentSpec(intentSpec)
@@ -676,10 +690,11 @@ app.post('/api/generate/v0', async (request, reply) => {
     }
 
     if (chosen) {
-      const { normalized, provenance } = await buildIntentFromChosen(chosen)
+      const { normalized, provenance, styleContext } = await buildIntentFromChosen(chosen)
       intentSpec.chosen = chosen
       intentSpec.normalized = normalized
       intentSpec.provenance = provenance
+      intentSpec.styleContext = styleContext
     }
 
     if (generationBrief) {
@@ -947,6 +962,21 @@ async function ensureUploadDir() {
   await fs.mkdir(config.upload.dir, { recursive: true })
 }
 
+async function readStoredImageMetadata(filePath: string): Promise<{
+  width?: number
+  height?: number
+}> {
+  try {
+    const metadata = await sharp(filePath).metadata()
+    return {
+      width: metadata.width,
+      height: metadata.height,
+    }
+  } catch {
+    return {}
+  }
+}
+
 async function clearRuntimeStorage() {
   await clearRuntimeData()
   await fs.rm(config.upload.dir, { recursive: true, force: true })
@@ -1051,6 +1081,7 @@ function getHeader(
 async function buildIntentFromChosen(chosen: IntentSpec['chosen']): Promise<{
   normalized: IntentSpec['normalized']
   provenance: IntentSpec['provenance']
+  styleContext: StyleContext
 }> {
   const packs = await getFacetPacks()
   return buildIntentFromChosenWithPacks(chosen, packs)
@@ -1062,6 +1093,7 @@ function buildIntentFromChosenWithPacks(
 ): {
   normalized: IntentSpec['normalized']
   provenance: IntentSpec['provenance']
+  styleContext: StyleContext
 } {
   const normalized: IntentSpec['normalized'] = {}
   const provenance: IntentSpec['provenance'] = {}
@@ -1117,7 +1149,67 @@ function buildIntentFromChosenWithPacks(
     }
   }
 
-  return { normalized, provenance }
+  return { normalized, provenance, styleContext: buildStyleContext(chosen, packs) }
+}
+
+function buildStyleContext(
+  chosen: IntentSpec['chosen'],
+  packs: FacetPack[]
+): StyleContext {
+  const sources = new Map<string, StyleContext['sources'][number]>()
+
+  recipeFacetFields.forEach((field) => {
+    const refId = chosen[field.key]
+    if (!refId) return
+
+    const pack = packs.find((facetPack) => facetPack.refId === refId)
+    if (!pack) return
+
+    const source = sources.get(refId) || {
+      refId,
+      facetTypes: [],
+      moodKeywords: pack.summary.moodKeywords || [],
+      averageConfidence: 0,
+      width: pack.source?.width,
+      height: pack.source?.height,
+    }
+    const facetType = field.facetType as FacetType
+
+    if (!source.facetTypes.includes(facetType)) {
+      source.facetTypes.push(facetType)
+    }
+
+    const confidences = pack.tokens
+      .filter((token) => token.facetType === field.facetType)
+      .map((token) => token.confidence)
+    const confidence =
+      confidences.length > 0
+        ? confidences.reduce((sum, value) => sum + value, 0) / confidences.length
+        : 0
+    source.averageConfidence = Math.max(source.averageConfidence, confidence)
+
+    sources.set(refId, source)
+  })
+
+  const sourceList = [...sources.values()]
+  return {
+    moodKeywords: uniqueStrings(
+      sourceList.flatMap((source) => source.moodKeywords)
+    ).slice(0, 8),
+    sources: sourceList.map((source) => ({
+      ...source,
+      moodKeywords: uniqueStrings(source.moodKeywords).slice(0, 6),
+      averageConfidence: roundToTwoDecimals(source.averageConfidence),
+    })),
+  }
+}
+
+function uniqueStrings(values: string[]): string[] {
+  return [...new Set(values.map((value) => value.trim()).filter(Boolean))]
+}
+
+function roundToTwoDecimals(value: number): number {
+  return Math.round(value * 100) / 100
 }
 
 async function resolveRecommendationFacetPacks(input: {
@@ -1151,7 +1243,7 @@ function recommendRecipes(packs: FacetPack[], limit: number): Recipe[] {
 
   return chosenCandidates
     .map((chosen, index) => {
-      const { normalized, provenance } = buildIntentFromChosenWithPacks(chosen, packs)
+      const { normalized, provenance, styleContext } = buildIntentFromChosenWithPacks(chosen, packs)
       const evaluated = evaluateIntentSpec({
         id: `recipe-candidate-${index}`,
         chosen,
@@ -1162,6 +1254,7 @@ function recommendRecipes(packs: FacetPack[], limit: number): Recipe[] {
         history: [],
         createdAt: Date.now(),
         targetExport: MVP_EXPORT_TARGET,
+        styleContext,
       })
 
       return {

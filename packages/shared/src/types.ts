@@ -109,6 +109,12 @@ export type FacetPack = {
   refId: string
   tokens: FacetToken[]
   summary: { moodKeywords: string[] } // LLM이 뽑아주는 요약
+  source?: {
+    filename?: string
+    mime?: string
+    width?: number
+    height?: number
+  }
   createdAt: number
 }
 
@@ -144,6 +150,20 @@ export type GenerationBrief = {
   prompt: string
   screens: ScreenPlanItem[]
   variantCount: 1 | 2 | 3
+}
+
+export type StyleContextSource = {
+  refId: string
+  facetTypes: FacetType[]
+  moodKeywords: string[]
+  averageConfidence: number
+  width?: number
+  height?: number
+}
+
+export type StyleContext = {
+  moodKeywords: string[]
+  sources: StyleContextSource[]
 }
 
 // ============================================
@@ -238,6 +258,7 @@ export type IntentSpec = {
   coherence?: CoherenceEvaluation
   targetExport: IntentExportTarget
   generationBrief?: GenerationBrief
+  styleContext?: StyleContext
 }
 
 // ============================================

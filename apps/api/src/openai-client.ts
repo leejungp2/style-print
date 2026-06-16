@@ -59,7 +59,8 @@ const DEFAULT_JSON_INSTRUCTIONS =
 
 export async function analyzeDesignFacets(
   imageDataUrl: string,
-  colorPalette: Record<string, string>
+  colorPalette: Record<string, string>,
+  assetDimensions?: { width?: number; height?: number }
 ): Promise<DesignFacetAnalysis> {
   const analysis = await callOpenAIJSON<DesignFacetAnalysis>(
     'design_facet_analysis',
@@ -70,7 +71,7 @@ export async function analyzeDesignFacets(
         content: [
           {
             type: 'input_text',
-            text: buildFacetAnalysisPrompt({ colorPalette }),
+            text: buildFacetAnalysisPrompt({ colorPalette, assetDimensions }),
           },
           {
             type: 'input_image',
