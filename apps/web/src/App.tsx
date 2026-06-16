@@ -120,6 +120,7 @@ export default function App() {
   const [coherenceJudgeResult, setCoherenceJudgeResult] =
     useState<CoherenceJudgeResult | null>(null)
   const [coherenceFeedbackStatus, setCoherenceFeedbackStatus] = useState<string | null>(null)
+  const [evaluatingIntent, setEvaluatingIntent] = useState(false)
 
   // Generation state
   const [generationChosen, setGenerationChosen] = useState<IntentSpec['chosen']>({})
@@ -270,6 +271,7 @@ export default function App() {
     setAuditReport(null)
     setGenerationError(null)
     setLastGeneratedSignature(null)
+    setEvaluatingIntent(true)
 
     try {
       const response = await fetch(apiUrl('/api/intents/create'), {
@@ -281,10 +283,13 @@ export default function App() {
       if (data.success && data.intentSpec) {
         setIntentSpec(data.intentSpec)
         setGenerationChosen(data.intentSpec.chosen)
-        evaluateIntentSpec(data.intentSpec.id, recipe.id)
+        await evaluateIntentSpec(data.intentSpec.id, recipe.id)
+      } else {
+        setEvaluatingIntent(false)
       }
     } catch (err) {
       console.error('Failed to create intent spec:', err)
+      setEvaluatingIntent(false)
     }
   }
 
@@ -390,6 +395,8 @@ export default function App() {
   }
 
   const evaluateIntentSpec = async (specId: string, recipeId?: string) => {
+    setEvaluatingIntent(true)
+
     try {
       const response = await fetch(apiUrl('/api/intents/evaluate'), {
         method: 'POST',
@@ -408,6 +415,8 @@ export default function App() {
       }
     } catch (err) {
       console.error('Failed to evaluate intent spec:', err)
+    } finally {
+      setEvaluatingIntent(false)
     }
   }
 
@@ -582,7 +591,7 @@ export default function App() {
   }
 
   const canProceedToRecipe = references.length > 0 && facetPacks.length > 0
-  const canProceedToGenerate = intentSpec !== null
+  const canProceedToGenerate = intentSpec !== null && !evaluatingIntent
   const resolvedGenerationChosen = intentSpec
     ? resolveGenerationChosen(generationChosen, intentSpec.chosen)
     : generationChosen
@@ -666,7 +675,7 @@ export default function App() {
                   Reference Assets
                 </CardTitle>
                 <CardDescription>
-                  Upload design references to extract reusable intent facets
+                  Upload up to 10 reference images to extract reusable intent facets
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -815,21 +824,34 @@ export default function App() {
                       Coherence Analysis
                     </CardTitle>
                     <CardDescription>
-                      Detected conflicts and suggested repairs
+                      {evaluatingIntent
+                        ? 'Evaluating the selected recipe coherence'
+                        : 'Detected conflicts and suggested repairs'}
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
                     <div className="mb-4">
                       <div className="flex items-center justify-between mb-2">
                         <span className="text-sm font-medium">Coherence Score</span>
-                        <span className="text-2xl font-bold">{coherenceScore}%</span>
+                        {evaluatingIntent ? (
+                          <span className="inline-flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            Evaluating...
+                          </span>
+                        ) : (
+                          <span className="text-2xl font-bold">{coherenceScore}%</span>
+                        )}
                       </div>
-                      <Progress value={coherenceScore} />
+                      <Progress
+                        value={coherenceScore}
+                        className={evaluatingIntent ? 'animate-pulse' : undefined}
+                      />
                       <div className="mt-3 flex flex-wrap items-center gap-2">
                         <Button
                           type="button"
                           size="sm"
                           variant="outline"
+                          disabled={evaluatingIntent}
                           onClick={() => submitCoherenceFeedback('accurate')}
                         >
                           <Check className="mr-2 h-4 w-4" />
@@ -839,6 +861,7 @@ export default function App() {
                           type="button"
                           size="sm"
                           variant="outline"
+                          disabled={evaluatingIntent}
                           onClick={() => submitCoherenceFeedback('tooHigh')}
                         >
                           <ArrowUp className="mr-2 h-4 w-4" />
@@ -848,6 +871,7 @@ export default function App() {
                           type="button"
                           size="sm"
                           variant="outline"
+                          disabled={evaluatingIntent}
                           onClick={() => submitCoherenceFeedback('tooLow')}
                         >
                           <ArrowDown className="mr-2 h-4 w-4" />
@@ -888,11 +912,21 @@ export default function App() {
                       <div>
                         <div className="flex items-center justify-between mb-2">
                           <span className="text-sm font-medium">Coherence</span>
-                          <span className="text-sm font-semibold">
-                            {selectedRecipe.coherenceScore}%
-                          </span>
+                          {evaluatingIntent ? (
+                            <span className="inline-flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              Evaluating
+                            </span>
+                          ) : (
+                            <span className="text-sm font-semibold">
+                              {selectedRecipe.coherenceScore}%
+                            </span>
+                          )}
                         </div>
-                        <Progress value={selectedRecipe.coherenceScore} />
+                        <Progress
+                          value={selectedRecipe.coherenceScore}
+                          className={evaluatingIntent ? 'animate-pulse' : undefined}
+                        />
                       </div>
                       <Separator />
                       <div className="space-y-2 text-sm">
@@ -917,8 +951,17 @@ export default function App() {
                         onClick={() => setCurrentStep('generate')}
                         disabled={!canProceedToGenerate}
                       >
-                        Continue to Generate
-                        <ChevronRight className="ml-2 h-4 w-4" />
+                        {evaluatingIntent ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Checking coherence...
+                          </>
+                        ) : (
+                          <>
+                            Continue to Generate
+                            <ChevronRight className="ml-2 h-4 w-4" />
+                          </>
+                        )}
                       </Button>
                     </div>
                   ) : (
@@ -984,13 +1027,6 @@ export default function App() {
                     </Select>
                   </div>
                 </div>
-
-                <ScreenPlanEditor
-                  screens={generationBrief.screens}
-                  onAdd={addScreenPlanItem}
-                  onChange={updateScreenPlanItem}
-                  onRemove={removeScreenPlanItem}
-                />
 
                 <div className="space-y-3">
                   <div>

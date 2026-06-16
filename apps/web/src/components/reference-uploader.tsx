@@ -10,6 +10,8 @@ import { apiUrl } from '@/lib/api'
 import { getReferenceImageSrc } from '@/lib/references'
 import type { ReferenceAsset } from '@/lib/types'
 
+const MAX_REFERENCE_ASSETS = 10
+
 interface ReferenceUploaderProps {
   onUploadComplete?: (references: ReferenceAsset[]) => void
   existingReferences?: ReferenceAsset[]
@@ -23,10 +25,16 @@ export function ReferenceUploader({
 }: ReferenceUploaderProps) {
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const remainingSlots = Math.max(0, MAX_REFERENCE_ASSETS - existingReferences.length)
 
   const onDrop = useCallback(
     async (acceptedFiles: File[]) => {
       if (acceptedFiles.length === 0) return
+
+      if (acceptedFiles.length > remainingSlots) {
+        setError(`Upload limit reached. Keep ${MAX_REFERENCE_ASSETS} or fewer reference images.`)
+        return
+      }
 
       setUploading(true)
       setError(null)
@@ -57,7 +65,7 @@ export function ReferenceUploader({
         setUploading(false)
       }
     },
-    [onUploadComplete]
+    [onUploadComplete, remainingSlots]
   )
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
@@ -69,7 +77,8 @@ export function ReferenceUploader({
       'image/svg+xml': ['.svg'],
     },
     maxSize: 100 * 1024 * 1024, // 100MB
-    disabled: uploading,
+    maxFiles: remainingSlots,
+    disabled: uploading || remainingSlots === 0,
   })
 
   const handleDelete = async (id: string) => {
@@ -107,7 +116,9 @@ export function ReferenceUploader({
             <Upload className="h-10 w-10 text-muted-foreground" />
           )}
           <div className="text-lg font-medium">
-            {isDragActive
+            {remainingSlots === 0
+              ? 'Reference limit reached'
+              : isDragActive
               ? 'Drop images here'
               : uploading
                 ? 'Uploading...'
@@ -117,7 +128,7 @@ export function ReferenceUploader({
             UI screenshots, web/app captures, logos, color palettes, brand moodboards, and simple SVG/PNG/JPEG/WebP assets
           </p>
           <p className="text-xs text-muted-foreground">
-            Up to 100MB each
+            Up to {MAX_REFERENCE_ASSETS} images total, 100MB each
           </p>
         </div>
       </div>
