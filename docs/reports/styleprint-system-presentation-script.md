@@ -34,7 +34,7 @@
 
 특히 사용자 시나리오는 화면 조작과 내부 처리를 함께 말해 주는 편이 좋습니다.
 
-- 사용자: 레퍼런스를 올리고 추천 recipe를 선택한 뒤, preview와 audit를 확인합니다.
+- 사용자: 레퍼런스를 올리고 추천 레시피를 선택한 뒤, 미리보기와 감사를 확인합니다.
 - 웹: `/api/references/upload`부터 `/api/audit/analyze`까지 필요한 API를 순서대로 호출합니다.
 - 백엔드와 도구: `ReferenceAsset`, `FacetPack`, `IntentSpec`, `GeneratedCode`, `AuditReport`를 차례로 쌓고, `sharp`, OpenAI, v0, Playwright가 각 단계를 분담합니다.
 - 핵심 메시지: 화면은 단순하지만, 내부는 분석 → 계획 → 생성 → 감사로 이어지는 흐름입니다.
