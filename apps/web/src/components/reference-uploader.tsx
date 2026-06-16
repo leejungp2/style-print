@@ -5,7 +5,6 @@ import { useDropzone } from 'react-dropzone'
 import { Upload, X, Image as ImageIcon, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
 import { apiUrl } from '@/lib/api'
 import { getReferenceImageSrc } from '@/lib/references'
 import type { ReferenceAsset } from '@/lib/types'
@@ -101,19 +100,24 @@ export function ReferenceUploader({
       <div
         {...getRootProps()}
         className={cn(
-          'border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors',
+          'group relative overflow-hidden rounded-lg border-2 border-dashed p-8 text-center transition-all duration-300',
           isDragActive
-            ? 'border-primary bg-primary/5'
-            : 'border-muted-foreground/25 hover:border-primary/50',
-          uploading && 'opacity-50 cursor-not-allowed'
+            ? 'border-primary bg-[linear-gradient(135deg,#fff0f4,#eef4ff)] shadow-accent'
+            : 'cursor-pointer border-muted-foreground/25 bg-[linear-gradient(135deg,#ffffff,#fff7fa_48%,#f8fafc)] hover:border-primary/50 hover:shadow-[0_16px_35px_rgba(15,23,42,0.1)]',
+          uploading && 'cursor-not-allowed opacity-70'
         )}
       >
         <input {...getInputProps()} />
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#ff4267,#2563eb,#10b981)] opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
         <div className="flex flex-col items-center gap-2">
           {uploading ? (
-            <Loader2 className="h-10 w-10 text-muted-foreground animate-spin" />
+            <div className="rounded-full bg-white p-3 shadow-sm">
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            </div>
           ) : (
-            <Upload className="h-10 w-10 text-muted-foreground" />
+            <div className="rounded-full bg-[linear-gradient(135deg,#151826,#334155)] p-3 text-white shadow-sm transition-transform duration-300 group-hover:-translate-y-0.5">
+              <Upload className="h-8 w-8" />
+            </div>
           )}
           <div className="text-lg font-medium">
             {remainingSlots === 0
@@ -147,20 +151,23 @@ export function ReferenceUploader({
             const referenceImageSrc = getReferenceImageSrc(ref)
 
             return (
-              <Card key={ref.id} className="group relative overflow-hidden">
-                <CardContent className="p-0">
+              <div
+                key={ref.id}
+                className="group relative overflow-hidden rounded-lg border bg-card shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_18px_38px_rgba(15,23,42,0.14)]"
+              >
+                <div className="p-0">
                   {referenceImageSrc ? (
                     <img
                       src={referenceImageSrc}
                       alt={ref.filename}
-                      className="w-full h-40 object-cover"
+                      className="h-40 w-full object-cover transition-transform duration-500 group-hover:scale-105"
                     />
                   ) : (
-                    <div className="w-full h-40 flex items-center justify-center bg-muted">
+                    <div className="flex h-40 w-full items-center justify-center bg-muted">
                       <ImageIcon className="h-10 w-10 text-muted-foreground" />
                     </div>
                   )}
-                  <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                  <div className="absolute inset-0 flex items-center justify-center bg-[#151826]/70 opacity-0 transition-opacity duration-300 group-hover:opacity-100">
                     <Button
                       variant="destructive"
                       size="icon"
@@ -174,8 +181,8 @@ export function ReferenceUploader({
                       Ref #{ref.id.slice(0, 6)}
                     </p>
                   </div>
-                </CardContent>
-              </Card>
+                </div>
+              </div>
             )
           })}
         </div>

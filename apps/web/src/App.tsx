@@ -27,6 +27,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { apiUrl } from '@/lib/api'
+import { cn } from '@/lib/utils'
 import {
   Upload,
   Palette,
@@ -611,26 +612,41 @@ export default function App() {
       : 'Regenerate UI'
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background text-foreground">
       {/* Header */}
-      <header className="border-b">
-        <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-bold">UI Facet Mixer</h1>
-              <p className="text-sm text-muted-foreground">
-                Extract, mix, and generate UI designs from uploaded design assets
-              </p>
+      <header className="relative overflow-hidden border-b border-white/10 bg-[#151826] text-white shadow-[0_24px_55px_rgba(15,23,42,0.18)]">
+        <div className="absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#ff4267,#2563eb,#10b981,#f59e0b)]" />
+        <div className="container mx-auto px-4 py-7">
+          <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+            <div className="min-w-0 max-w-2xl animate-fade-up space-y-4">
+              <Badge
+                variant="outline"
+                className="border-white/20 bg-white/10 text-white backdrop-blur"
+              >
+                MVP v0.1
+              </Badge>
+              <div>
+                <h1 className="text-balance text-3xl font-black leading-tight tracking-normal md:text-4xl">
+                  UI Facet Mixer
+                </h1>
+                <p className="mt-2 max-w-xl break-words text-sm leading-6 text-slate-300 md:text-base">
+                  Extract, mix, and generate UI designs from uploaded design assets.
+                </p>
+              </div>
             </div>
-            <Badge variant="outline">MVP v0.1</Badge>
+            <div className="grid w-full grid-cols-2 gap-2 text-sm sm:grid-cols-3 lg:w-auto">
+              <HeaderMetric label="References" value={references.length} />
+              <HeaderMetric label="Facets" value={facetPacks.length} />
+              <HeaderMetric label="Output" value={generatedCode ? 'Ready' : 'Draft'} />
+            </div>
           </div>
         </div>
       </header>
 
       {/* Step Indicator */}
-      <div className="border-b bg-muted/30">
+      <div className="sticky top-0 z-20 border-b bg-white/80 shadow-sm backdrop-blur">
         <div className="container mx-auto px-4 py-3">
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3 overflow-x-auto pb-1">
             <StepButton
               step="upload"
               current={currentStep}
@@ -639,7 +655,7 @@ export default function App() {
               label="1. Upload & Extract"
               completed={canProceedToRecipe}
             />
-            <ChevronRight className="h-4 w-4 text-muted-foreground" />
+            <ChevronRight className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
             <StepButton
               step="recipe"
               current={currentStep}
@@ -649,7 +665,7 @@ export default function App() {
               disabled={!canProceedToRecipe}
               completed={canProceedToGenerate}
             />
-            <ChevronRight className="h-4 w-4 text-muted-foreground" />
+            <ChevronRight className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
             <StepButton
               step="generate"
               current={currentStep}
@@ -664,14 +680,14 @@ export default function App() {
       </div>
 
       {/* Main Content */}
-      <main className="container mx-auto px-4 py-6">
+      <main className="container mx-auto px-4 py-8">
         {currentStep === 'upload' && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Upload Section */}
-            <Card>
+            <Card className="app-surface interactive-card animate-fade-up overflow-hidden">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <Upload className="h-5 w-5" />
+                  <Upload className="h-5 w-5 text-primary" />
                   Reference Assets
                 </CardTitle>
                 <CardDescription>
@@ -718,10 +734,10 @@ export default function App() {
             </Card>
 
             {/* Extracted Facets Section */}
-            <Card>
+            <Card className="app-surface interactive-card animate-fade-up overflow-hidden">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <Palette className="h-5 w-5" />
+                  <Palette className="h-5 w-5 text-primary" />
                   Extracted Facets
                 </CardTitle>
                 <CardDescription>
@@ -730,8 +746,8 @@ export default function App() {
               </CardHeader>
               <CardContent>
                 {facetPacks.length === 0 ? (
-                  <div className="text-center py-8 text-muted-foreground">
-                    <Palette className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                  <div className="empty-state">
+                    <Palette className="mx-auto mb-3 h-12 w-12 text-primary/70" />
                     <p>No facets extracted yet</p>
                     <p className="text-sm">Upload references and click &quot;Extract Facets&quot;</p>
                   </div>
@@ -767,7 +783,7 @@ export default function App() {
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Recipe Cards */}
             <div className="lg:col-span-2">
-              <Card>
+              <Card className="app-surface interactive-card animate-fade-up overflow-hidden">
                 <CardHeader>
                   <CardTitle>Recommended Recipes</CardTitle>
                   <CardDescription>
@@ -797,7 +813,7 @@ export default function App() {
                 </CardContent>
               </Card>
 
-              <Card className="mt-6">
+              <Card className="app-surface interactive-card mt-6 overflow-hidden">
                 <CardHeader>
                   <CardTitle>Custom Facet Sources</CardTitle>
                   <CardDescription>
@@ -817,10 +833,10 @@ export default function App() {
 
               {/* Conflicts & Repairs */}
               {intentSpec && (
-                <Card className="mt-6">
+                <Card className="app-surface interactive-card mt-6 overflow-hidden">
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2">
-                      <AlertTriangle className="h-5 w-5" />
+                      <AlertTriangle className="h-5 w-5 text-amber-500" />
                       Coherence Analysis
                     </CardTitle>
                     <CardDescription>
@@ -896,7 +912,7 @@ export default function App() {
 
             {/* Selected Recipe Summary */}
             <div>
-              <Card className="sticky top-4">
+              <Card className="app-surface sticky top-24 overflow-hidden">
                 <CardHeader>
                   <CardTitle>Selected Recipe</CardTitle>
                 </CardHeader>
@@ -965,8 +981,8 @@ export default function App() {
                       </Button>
                     </div>
                   ) : (
-                    <div className="text-center py-8 text-muted-foreground">
-                      <Palette className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                    <div className="empty-state">
+                      <Palette className="mx-auto mb-2 h-8 w-8 text-primary/70" />
                       <p>Select a recipe to continue</p>
                     </div>
                   )}
@@ -979,12 +995,12 @@ export default function App() {
         {currentStep === 'generate' && (
           <div className="space-y-6">
             {/* Generation Controls */}
-            <Card>
+            <Card className="app-surface animate-fade-up overflow-hidden">
               <CardHeader>
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <CardTitle className="flex items-center gap-2">
-                      <Wand2 className="h-5 w-5" />
+                      <Wand2 className="h-5 w-5 text-primary" />
                       Export UI Code
                     </CardTitle>
                     <CardDescription>
@@ -1007,8 +1023,8 @@ export default function App() {
                       value={generationBrief.prompt}
                       onChange={(event) => updateGenerationPrompt(event.target.value)}
                       placeholder="Describe the product, audience, content, interactions, or constraints you want in the generated UI."
-                      className="min-h-[120px] w-full resize-y rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-                    />
+                    className="min-h-[120px] w-full resize-y rounded-md border border-input bg-white/90 px-3 py-2 text-sm shadow-inner ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                  />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="variant-count">Variants</Label>
@@ -1086,24 +1102,24 @@ export default function App() {
 
             {/* Code & Preview */}
             {generatedCode && (
-              <Tabs defaultValue="preview" className="w-full">
-                <TabsList>
+              <Tabs defaultValue="preview" className="w-full animate-fade-up">
+                <TabsList className="mb-3">
                   <TabsTrigger value="preview">Result</TabsTrigger>
                   <TabsTrigger value="code">Code</TabsTrigger>
                   <TabsTrigger value="audit">Audit & Provenance</TabsTrigger>
                 </TabsList>
                 <TabsContent value="preview">
-                  <Card>
+                  <Card className="app-surface overflow-hidden">
                     <CardContent className="space-y-4 pt-6">
-                      <div className="flex flex-wrap items-start gap-4 rounded-md border bg-muted/30 p-3">
+                      <div className="flex flex-wrap items-start gap-4 rounded-lg border bg-[linear-gradient(135deg,#fff7fa,#f8fafc)] p-3 shadow-sm">
                         {generatedCode.screenshotUrl ? (
                           <img
                             src={generatedCode.screenshotUrl}
                             alt="Generated UI screenshot"
-                            className="h-28 w-44 rounded border bg-white object-cover"
+                            className="h-28 w-44 rounded-md border bg-white object-cover shadow-sm"
                           />
                         ) : (
-                          <div className="flex h-28 w-44 items-center justify-center rounded border bg-background text-xs text-muted-foreground">
+                          <div className="flex h-28 w-44 items-center justify-center rounded-md border bg-white text-xs text-muted-foreground shadow-inner">
                             No screenshot
                           </div>
                         )}
@@ -1142,7 +1158,7 @@ export default function App() {
                   </Card>
                 </TabsContent>
                 <TabsContent value="code">
-                  <Card>
+                  <Card className="app-surface overflow-hidden">
                     <CardContent className="pt-6">
                       <CodeViewer code={generatedCode.code} />
                     </CardContent>
@@ -1150,7 +1166,7 @@ export default function App() {
                 </TabsContent>
                 <TabsContent value="audit">
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    <Card>
+                    <Card className="app-surface overflow-hidden">
                       <CardHeader>
                         <CardTitle>Facet Diff</CardTitle>
                         <CardDescription>
@@ -1167,7 +1183,7 @@ export default function App() {
                         )}
                       </CardContent>
                     </Card>
-                    <Card>
+                    <Card className="app-surface overflow-hidden">
                       <CardHeader>
                         <CardTitle>Provenance</CardTitle>
                         <CardDescription>
@@ -1194,6 +1210,23 @@ export default function App() {
           </div>
         )}
       </main>
+    </div>
+  )
+}
+
+function HeaderMetric({
+  label,
+  value,
+}: {
+  label: string
+  value: number | string
+}) {
+  return (
+    <div className="min-w-0 rounded-lg border border-white/10 bg-white/10 px-3 py-2 text-right backdrop-blur">
+      <div className="text-lg font-black leading-none text-white">{value}</div>
+      <div className="mt-1 text-[11px] font-semibold text-slate-300">
+        {label}
+      </div>
     </div>
   )
 }
@@ -1375,22 +1408,27 @@ function StepButton({
     <button
       onClick={onClick}
       disabled={disabled}
-      className={`flex items-center gap-2 px-3 py-2 rounded-md transition-colors ${
-        isActive
-          ? 'bg-primary text-primary-foreground'
-          : completed
-            ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300'
-            : disabled
-              ? 'text-muted-foreground cursor-not-allowed'
-              : 'hover:bg-muted'
-      }`}
+      className={cn(
+        'group flex min-w-[180px] flex-shrink-0 items-center gap-2 rounded-md border px-3 py-2.5 text-sm font-semibold transition-all duration-200',
+        isActive &&
+          'border-transparent bg-[linear-gradient(135deg,#ff4267,#ff5c7a)] text-white shadow-accent',
+        completed &&
+          !isActive &&
+          'border-emerald-200 bg-emerald-50 text-emerald-700',
+        disabled &&
+          'cursor-not-allowed border-transparent bg-transparent text-muted-foreground opacity-60',
+        !isActive &&
+          !completed &&
+          !disabled &&
+          'border-transparent bg-white/65 text-slate-700 hover:border-primary/25 hover:bg-white hover:shadow-sm'
+      )}
     >
       {completed && !isActive ? (
         <Check className="h-4 w-4" />
       ) : (
         icon
       )}
-      <span className="font-medium">{label}</span>
+      <span>{label}</span>
     </button>
   )
 }
