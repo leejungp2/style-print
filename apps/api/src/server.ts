@@ -459,10 +459,11 @@ app.post('/api/intents/evaluate', async (request, reply) => {
         .send({ success: false, error: 'IntentSpec not found' } satisfies EvaluateResponse)
     }
 
-    const { conflicts, repairs, coherenceScore } = evaluateIntentSpec(intentSpec)
+    const { conflicts, repairs, coherenceScore, coherence } = evaluateIntentSpec(intentSpec)
     intentSpec.conflicts = conflicts
     intentSpec.repairs = repairs
     intentSpec.coherenceScore = coherenceScore
+    intentSpec.coherence = coherence
     await saveIntentSpec(intentSpec)
 
     return reply.send({
@@ -470,6 +471,7 @@ app.post('/api/intents/evaluate', async (request, reply) => {
       conflicts,
       repairs,
       coherenceScore,
+      coherence,
     } satisfies EvaluateResponse)
   } catch (error) {
     request.log.error(error)
@@ -547,6 +549,7 @@ app.post('/api/intents/apply-repair', async (request, reply) => {
     intentSpec.conflicts = evaluated.conflicts
     intentSpec.repairs = evaluated.repairs
     intentSpec.coherenceScore = evaluated.coherenceScore
+    intentSpec.coherence = evaluated.coherence
 
     await saveIntentSpec(intentSpec)
 
@@ -597,6 +600,7 @@ app.post('/api/generate/v0', async (request, reply) => {
     intentSpec.conflicts = evaluated.conflicts
     intentSpec.repairs = evaluated.repairs
     intentSpec.coherenceScore = evaluated.coherenceScore
+    intentSpec.coherence = evaluated.coherence
 
     await saveIntentSpec(intentSpec)
 

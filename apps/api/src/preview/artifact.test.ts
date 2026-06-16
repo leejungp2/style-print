@@ -166,8 +166,44 @@ describe('intent evaluator', () => {
     } satisfies IntentSpec)
 
     expect(evaluated.coherenceScore).toBeLessThan(100)
+    expect(evaluated.coherence.score).toBe(evaluated.coherenceScore)
+    expect(evaluated.coherence.dimensions.accessibility).toBeLessThan(100)
     expect(evaluated.conflicts[0]?.type).toBe('contrast')
     expect(evaluated.repairs[0]?.changes[0]?.key).toBe('palette.text')
+  })
+
+  test('reports coverage gaps separately from legacy conflict cards', () => {
+    const evaluated = evaluateIntentSpec({
+      id: 'intent-coverage-test',
+      chosen: {},
+      normalized: {
+        palette: {
+          text: '#111111',
+          background: '#ffffff',
+          primary: '#005fcc',
+        } as Record<ColorRole, string>,
+      },
+      provenance: {},
+      conflicts: [],
+      repairs: [],
+      history: [],
+      createdAt: 1,
+      targetExport: {
+        format: 'react-tailwind',
+        label: 'React + Tailwind',
+        description: 'Test export target',
+      },
+      generationBrief: {
+        prompt: '',
+        screens: [],
+        variantCount: 1,
+      },
+    } satisfies IntentSpec)
+
+    expect(evaluated.conflicts).toEqual([])
+    expect(evaluated.coherence.dimensions.intentCoverage).toBeLessThan(100)
+    expect(evaluated.coherence.dimensions.provenanceCoverage).toBeLessThan(100)
+    expect(evaluated.coherence.dimensions.generationReadiness).toBeLessThan(100)
   })
 })
 
