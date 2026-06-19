@@ -121,12 +121,7 @@
       font-size: .92em;
     }
     .slide-no {
-      position: absolute;
-      right: 24px;
-      bottom: 18px;
-      color: #94a3b8;
-      font-size: 12px;
-      font-weight: 700;
+      display: none;
     }
     .metric-grid {
       display: grid;
@@ -544,6 +539,18 @@
     .matrix-card h3 {
       margin-top: 0;
     }
+    .brief-card p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 15px;
+      line-height: 1.55;
+    }
+    .closing-grid {
+      align-items: stretch;
+    }
+    .closing-grid .matrix-card {
+      height: 100%;
+    }
     .formula {
       margin: 14px 0;
       padding: 14px 16px;
@@ -733,51 +740,6 @@
     </section>
 
     <section class="slide" id="slide-5">
-      <h2>시스템 아키텍처: 5개 레이어와 책임</h2>
-      <div class="architecture-layers">
-        <div class="architecture-layer">
-          <div class="layer-no">01</div>
-          <h3>Frontend</h3>
-          <p>Vite React + TypeScript. 사용자는 업로드, 레시피 선택, 생성 결과, audit 결과를 확인합니다.</p>
-        </div>
-        <div class="architecture-layer">
-          <div class="layer-no">02</div>
-          <h3>Backend API</h3>
-          <p>Fastify API가 upload, extract, intent, evaluate, generate, audit 요청을 받습니다.</p>
-        </div>
-        <div class="architecture-layer">
-          <div class="layer-no">03</div>
-          <h3>Agent Orchestrator</h3>
-          <p>facet 추출, recipe 추천, coherence 평가, repair plan, generation job을 순서대로 연결합니다.</p>
-        </div>
-        <div class="architecture-layer">
-          <div class="layer-no">04</div>
-          <h3>Tools & Models</h3>
-          <p>sharp, OpenAI, v0, esbuild, Playwright가 실제 분석, 생성, 미리보기, 감사를 수행합니다.</p>
-        </div>
-        <div class="architecture-layer">
-          <div class="layer-no">05</div>
-          <h3>Runtime Artifacts</h3>
-          <p>ReferenceAsset, FacetPack, IntentSpec, GeneratedCode, AuditReport가 단계별 기록으로 남습니다.</p>
-        </div>
-      </div>
-      <div class="architecture-bridge">
-        앞 슬라이드의 6단계 파이프라인은 이 5개 레이어를 통과하며 실행되고, 산출물은 현재 <code>data/*.json</code>과 <code>public/uploads</code>에 저장됩니다.
-      </div>
-      <div class="summary-box">
-        <strong>레이어별 핵심 계약</strong>
-        <ul>
-          <li>Frontend는 사용자가 업로드, 레시피 선택, 생성 결과, audit 결과를 확인하는 표면입니다.</li>
-          <li>Backend API는 <code>/api/references/upload</code>, <code>/api/facets/extract</code>, <code>/api/intents/create</code>, <code>/api/intents/evaluate</code>, <code>/api/generate/v0</code>, <code>/api/audit/analyze</code>를 제공합니다.</li>
-          <li>Agent Orchestrator는 분석, 추천, 검증, repair, 생성 job을 단계별로 연결합니다.</li>
-          <li>Tools and Models는 sharp, OpenAI Responses API, v0 API, Playwright로 실제 처리를 수행합니다.</li>
-          <li>Runtime Artifacts는 각 단계의 결과를 저장해 다음 단계 입력과 provenance로 사용합니다.</li>
-        </ul>
-      </div>
-      <div class="slide-no">05</div>
-    </section>
-
-    <section class="slide" id="slide-6">
       <h2>전체 시스템 파이프라인: 6단계 실행 흐름</h2>
       <div class="pipeline-wide">
         <div class="pipeline-node">
@@ -823,6 +785,51 @@
           <tr><td><code>AuditReport</code></td><td>OpenAI audit</td><td>IntentSpec 반영도 · diff · provenance 확인</td></tr>
         </tbody>
       </table>
+      <div class="slide-no">05</div>
+    </section>
+
+    <section class="slide" id="slide-6">
+      <h2>시스템 아키텍처: 5개 레이어와 책임</h2>
+      <div class="architecture-layers">
+        <div class="architecture-layer">
+          <div class="layer-no">01</div>
+          <h3>Frontend</h3>
+          <p>Vite React + TypeScript. 사용자는 업로드, 레시피 선택, 생성 결과, audit 결과를 확인합니다.</p>
+        </div>
+        <div class="architecture-layer">
+          <div class="layer-no">02</div>
+          <h3>Backend API</h3>
+          <p>Fastify API가 upload, extract, intent, evaluate, generate, audit 요청을 받습니다.</p>
+        </div>
+        <div class="architecture-layer">
+          <div class="layer-no">03</div>
+          <h3>Agent Orchestrator</h3>
+          <p>facet 추출, recipe 추천, coherence 평가, repair plan, generation job을 순서대로 연결합니다.</p>
+        </div>
+        <div class="architecture-layer">
+          <div class="layer-no">04</div>
+          <h3>Tools & Models</h3>
+          <p>sharp, OpenAI, v0, esbuild, Playwright가 실제 분석, 생성, 미리보기, 감사를 수행합니다.</p>
+        </div>
+        <div class="architecture-layer">
+          <div class="layer-no">05</div>
+          <h3>Runtime Artifacts</h3>
+          <p>ReferenceAsset, FacetPack, IntentSpec, GeneratedCode, AuditReport가 단계별 기록으로 남습니다.</p>
+        </div>
+      </div>
+      <div class="architecture-bridge">
+        앞 슬라이드의 6단계 파이프라인은 이 5개 레이어를 통과하며 실행되고, 산출물은 현재 <code>data/*.json</code>과 <code>public/uploads</code>에 저장됩니다.
+      </div>
+      <div class="summary-box">
+        <strong>레이어별 핵심 계약</strong>
+        <ul>
+          <li>Frontend는 사용자가 업로드, 레시피 선택, 생성 결과, audit 결과를 확인하는 표면입니다.</li>
+          <li>Backend API는 <code>/api/references/upload</code>, <code>/api/facets/extract</code>, <code>/api/intents/create</code>, <code>/api/intents/evaluate</code>, <code>/api/generate/v0</code>, <code>/api/audit/analyze</code>를 제공합니다.</li>
+          <li>Agent Orchestrator는 분석, 추천, 검증, repair, 생성 job을 단계별로 연결합니다.</li>
+          <li>Tools and Models는 sharp, OpenAI Responses API, v0 API, Playwright로 실제 처리를 수행합니다.</li>
+          <li>Runtime Artifacts는 각 단계의 결과를 저장해 다음 단계 입력과 provenance로 사용합니다.</li>
+        </ul>
+      </div>
       <div class="slide-no">06</div>
     </section>
 
@@ -1136,6 +1143,72 @@
         </ul>
       </div>
       <div class="slide-no">13</div>
+    </section>
+
+    <section class="slide" id="slide-13a">
+      <h2>구현 포인트 한 줄 요약</h2>
+      <div class="matrix-grid">
+        <div class="matrix-card brief-card">
+          <h3>API</h3>
+          <p>Fastify가 업로드, facet 추출, intent 평가, v0 생성, audit을 <code>/api/...</code> 경로로 연결합니다.</p>
+        </div>
+        <div class="matrix-card brief-card">
+          <h3>테스트 코드</h3>
+          <p>Vitest가 API 응답, preview build, recipe 정렬, coherence 평가, PreviewPane 렌더링을 확인합니다.</p>
+        </div>
+        <div class="matrix-card brief-card">
+          <h3>레퍼런스 분석</h3>
+          <p><code>sharp</code> 색상 추출과 OpenAI vision 분석을 합쳐 palette, typography, layout, spacing facet을 만듭니다.</p>
+        </div>
+        <div class="matrix-card brief-card">
+          <h3>Orchestration</h3>
+          <p>별도 agent framework 대신 route와 typed artifact로 분석, 계획, 검증, 생성, 감사를 순서대로 실행합니다.</p>
+        </div>
+        <div class="matrix-card brief-card">
+          <h3>일관성 점수</h3>
+          <p>대비, 간격, 출처, 커버리지 mismatch를 감점해 생성 전 repair plan을 제안합니다.</p>
+        </div>
+        <div class="matrix-card brief-card">
+          <h3>Audit</h3>
+          <p>생성된 코드가 IntentSpec과 facet provenance를 얼마나 반영했는지 생성 후 다시 점검합니다.</p>
+        </div>
+      </div>
+      <div class="slide-no">13A</div>
+    </section>
+
+    <section class="slide" id="slide-14">
+      <h2>핵심 차별점</h2>
+      <div class="summary-box callout-dark">
+        <p style="margin: 0; font-size: 28px; line-height: 1.6; font-weight: 800; color: #fff;">
+          StylePrint는 레퍼런스를 facet 단위로 분해해 조합하고, coherence로 생성 전 충돌을 줄이며, audit으로 생성 후 결과의 의도와 출처까지 추적하는 UI 생성 시스템입니다.
+        </p>
+      </div>
+      <div class="slide-no">14</div>
+    </section>
+
+    <section class="slide" id="slide-15">
+      <h2>마무리: 차별점과 발전 방향</h2>
+      <div class="two-col closing-grid">
+        <div class="matrix-card callout-dark">
+          <h3>차별점</h3>
+          <ul>
+            <li>Facet 단위 추출: 색상, 레이아웃, 간격, 컴포넌트 스타일 분리</li>
+            <li>Facet별 provenance: reference 출처 추적</li>
+            <li>생성 전 coherence 평가: contrast, spacing mismatch 사전 발견</li>
+            <li>생성 후 audit: IntentSpec 반영도 재검토</li>
+          </ul>
+        </div>
+        <div class="matrix-card">
+          <h3>앞으로 발전시킬 부분</h3>
+          <ul>
+            <li>JSON 저장소를 DB와 object storage 기반으로 전환</li>
+            <li>사용자별 프로젝트 관리와 인증 추가</li>
+            <li>Storybook과 visual regression test로 생성 UI 품질 검증 강화</li>
+            <li>Planner, Validator, Generator를 더 명확한 multi-agent 구조로 분리</li>
+          </ul>
+        </div>
+      </div>
+      <div class="slide-no">15</div>
     </section>
 
   </main>

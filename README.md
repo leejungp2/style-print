@@ -1,52 +1,64 @@
 # StylePrint
 
-UI reference screenshot에서 디자인 특징을 추출하고, 여러 reference의 스타일 요소를 조합해 React + Tailwind UI 코드를 생성하는 프로토타입입니다.
+StylePrint is a prototype for extracting design facets from UI reference screenshots, mixing style choices across references, and generating React + Tailwind UI code.
 
-현재 구조는 **Vite React frontend + Fastify TypeScript backend**로 분리되어 있습니다.
+The app is split into a **Vite React frontend** and a **Fastify TypeScript backend**.
 
-## 프로젝트 정보
+## Quick Links
 
-- 서비스 주제: UI reference screenshot의 디자인 facet을 추출하고 조합해 React + Tailwind UI 코드를 생성합니다.
-- 핵심 기능: reference 업로드, facet 추출, recipe 선택, conflict/repair 평가, UI 코드 생성, audit 비교
-- 문서 관리: 기획서, 주차별 산출물, Agent 개발 workflow는 GitHub Wiki에서 관리합니다.
-- Task 관리: 개발 Task는 GitHub Issue로 등록하고 진행 상태를 관리합니다.
-- PR 관리: 기능 단위로 branch를 나누고 `feature/*` branch에서 `dev` branch로 PR을 생성합니다.
+- Production website: https://style-print.vercel.app/
+- Local web app: http://localhost:5173
+- Local API health check: http://localhost:4000/health
 
-## 구조
+## What It Does
+
+StylePrint helps turn visual UI references into reusable generation inputs:
+
+- Upload UI reference screenshots.
+- Extract design facets such as color, typography, layout, spacing, component style, and mood.
+- Choose or recommend recipes that combine facets from multiple references.
+- Evaluate intent coherence, conflicts, and possible repairs.
+- Generate React + Tailwind UI code through v0.
+- Build preview artifacts and compare generated output against the intended style.
+
+## Project Structure
 
 ```text
 apps/
-  web/        Vite + React + TypeScript UI
+  web/        Vite + React + TypeScript frontend
   api/        Fastify + TypeScript API server
 packages/
-  shared/     frontend/backend 공용 타입
-data/         JSON 기반 로컬 저장소
+  shared/     shared frontend/backend TypeScript types
+data/         local JSON storage
 public/
-  uploads/    업로드 이미지 저장소
+  uploads/    uploaded reference images
 ```
 
-## 개발 Workflow
+## Development Workflow
 
-브랜치는 아래 흐름으로 관리합니다.
+Branches follow this flow:
 
 ```text
 main -> dev -> feature/*
 ```
 
-- `main`: 안정화된 결과를 유지하는 branch
-- `dev`: 기능 개발 결과를 통합하는 branch
-- `feature/*`: 개별 기능 또는 issue 작업 branch
+- `main`: stable branch.
+- `dev`: integration branch for active development.
+- `feature/*`: feature or issue-specific work.
 
-진행 방식:
+Recommended workflow:
 
-1. GitHub Issue로 개발 Task를 등록합니다.
-2. `dev`에서 `feature/기능명` branch를 생성합니다.
-3. 기능 단위로 구현하고 `npm run typecheck`로 검증합니다.
-4. 필요한 경우 `npm run build`까지 확인합니다.
-5. `feature/*`에서 `dev`로 PR을 생성합니다.
-6. 기획/문서/주차별 산출물은 GitHub Wiki에 정리합니다.
+1. Create or identify the GitHub Issue for the task.
+2. Create a `feature/*` branch from `dev`.
+3. Implement the feature.
+4. Run `npm run typecheck`.
+5. Run `npm run build` when the change affects broader frontend/backend behavior.
+6. Open a PR from `feature/*` to `dev`.
+7. Keep planning docs, weekly deliverables, and agent workflow notes in the GitHub Wiki.
 
-## 로컬 실행
+## Local Setup
+
+Install dependencies and create a local environment file:
 
 ```bash
 cd /Users/Owner/hcclab/style-print-jung
@@ -54,22 +66,22 @@ npm install
 cp .env.local.example .env.local
 ```
 
-프로젝트 루트의 `.env.local`에 실제 API key를 입력합니다.
+Add real API keys to `.env.local` in the project root.
 
-개발 서버를 실행합니다.
+Start both the frontend and backend:
 
 ```bash
 npm run dev
 ```
 
-접속 및 확인:
+Then open the web app and check the API:
 
 ```bash
 open http://localhost:5173
 curl http://localhost:4000/health
 ```
 
-API와 Web을 터미널 두 개로 나눠 실행할 수도 있습니다.
+You can also run the API and web app in separate terminals:
 
 ```bash
 npm run dev:api
@@ -79,19 +91,21 @@ npm run dev:api
 npm run dev:web
 ```
 
-## 환경 변수
+## Environment Variables
 
-`.env.local` 위치는 프로젝트 루트입니다.
+The local environment file lives at:
 
 ```text
 /Users/Owner/hcclab/style-print-jung/.env.local
 ```
 
-파일이 없으면 `.env.local.example`에서 복사합니다.
+Create it from the example file if it does not exist:
 
 ```bash
 cp .env.local.example .env.local
 ```
+
+Expected values:
 
 ```env
 OPENAI_API_KEY=sk-...
@@ -104,52 +118,62 @@ WEB_ORIGIN=http://localhost:5173
 VITE_API_BASE_URL=
 ```
 
-`OPENAI_API_KEY`와 `V0_API_KEY`는 필수입니다. 누락되거나 API 호출이 실패하면 임의 데이터로 진행하지 않고 해당 API 요청이 실패합니다. `OPENAI_JUDGE_MODEL`은 coherence judge 전용 모델을 분리하고 싶을 때 사용하며, 없으면 `OPENAI_MODEL`을 사용합니다.
+`OPENAI_API_KEY` and `V0_API_KEY` are required. If either key is missing, or if an external API call fails, the relevant API request fails instead of falling back to mock data.
 
-`WEB_ORIGIN`은 쉼표로 여러 frontend origin을 지정할 수 있습니다. 예를 들어 Vercel production URL과 preview URL을 함께 허용해야 하면 `https://style-print.vercel.app,https://style-print-git-dev.vercel.app`처럼 설정합니다.
+`OPENAI_JUDGE_MODEL` is optional. Use it to separate the coherence judge model from the main `OPENAI_MODEL`; if it is not set, the API uses `OPENAI_MODEL`.
 
-## 주요 흐름
+`WEB_ORIGIN` accepts multiple frontend origins separated by commas. For example:
 
-1. Web에서 reference 이미지를 `multipart/form-data`로 업로드합니다.
-2. API는 이미지를 `public/uploads`에 저장하고 파일 URL, MIME, width/height metadata를 `data/references.json`에 기록합니다.
-3. API가 `sharp`와 rule-based color extractor로 palette, semantic color role, contrast 정보를 추출합니다.
-4. OpenAI Responses API가 같은 reference에서 typography, layout, spacing, component style, mood keyword를 JSON facet으로 분석합니다.
-5. Recipe 추천 또는 직접 선택을 통해 IntentSpec을 만들고, 선택 facet의 provenance와 source mood/confidence를 `styleContext`로 정규화합니다.
-6. API가 rule-based coherence를 평가하고, 요청 시 OpenAI judge가 dimension rating/checklist 기반으로 shadow 또는 primary 평가를 추가합니다.
-7. Generate UI 입력의 user brief, screen plan, variant count가 IntentSpec의 `generationBrief`에 저장되고 v0 prompt에 함께 전달됩니다.
-8. v0 생성은 async job으로 실행됩니다. `/api/generate/v0`는 job id를 반환하고, Web은 `/api/generate/jobs/:jobId`를 polling해 생성 코드와 preview URL을 받습니다.
-9. Preview artifact는 API가 로컬 파일로 빌드하고, 가능한 경우 Playwright screenshot을 저장합니다.
-10. OpenAI audit이 생성 코드에서 facet을 역추출하고, `generatedCodeId`와 함께 intent 대비 diff/provenance badge를 저장합니다.
+```env
+WEB_ORIGIN=https://style-print.vercel.app,https://style-print-git-dev.vercel.app
+```
 
-## API
+## Core Flow
+
+1. The web app uploads reference images as `multipart/form-data`.
+2. The API stores images in `public/uploads` and records file URL, MIME type, width, and height metadata in `data/references.json`.
+3. The API extracts palette, semantic color roles, and contrast information with `sharp` and rule-based color analysis.
+4. The OpenAI Responses API analyzes typography, layout, spacing, component style, and mood keywords from the same reference.
+5. Recipe recommendation or manual recipe selection creates an `IntentSpec`; selected facet provenance, source mood, and confidence are normalized into `styleContext`.
+6. The API runs rule-based coherence evaluation and can add an OpenAI judge evaluation in `off`, `shadow`, or `primary` mode.
+7. The UI generation brief, screen plan, and variant count are saved in `IntentSpec.generationBrief` and passed into the v0 prompt.
+8. v0 generation runs as an async job. `/api/generate/v0` returns a job ID, and the web app polls `/api/generate/jobs/:jobId` for generated code and preview URLs.
+9. The API builds preview artifacts locally and stores a Playwright screenshot when available.
+10. OpenAI audit extracts facets from generated code and stores an intent comparison report with provenance badges.
+
+## API Routes
 
 | Endpoint | Method | Description |
 | --- | --- | --- |
-| `/health` | `GET` | API 상태 확인 |
-| `/uploads/:filename` | `GET` | 업로드 이미지 제공 |
-| `/generated-previews/:previewId/:filename` | `GET` | 생성 preview artifact 파일 제공 |
-| `/api/references/upload` | `GET` | reference 목록 조회 |
-| `/api/references/upload` | `POST` | multipart reference 이미지 업로드 |
-| `/api/references/upload?id=...` | `DELETE` | reference 삭제 |
-| `/api/facets/extract` | `POST` | reference에서 facet 추출 |
-| `/api/intents/create` | `POST` | 선택한 recipe로 intent 생성 |
-| `/api/recipes/recommend` | `POST` | facet pack 기반 recipe 추천 |
-| `/api/intents/evaluate` | `POST` | intent coherence/conflict 평가 및 repair 저장. `judgeMode`으로 OpenAI judge를 `off`, `shadow`, `primary` 중 선택 |
-| `/api/intents/apply-repair` | `POST` | repair 적용 |
-| `/api/coherence/feedback` | `POST` | coherence judge 결과 피드백 저장 |
-| `/api/generate/v0` | `POST` | v0 UI 코드 생성 job 생성. 현재 `single` mode만 지원 |
-| `/api/generate/jobs/:jobId` | `GET` | 생성 job 상태와 결과 조회 |
-| `/api/preview/build` | `POST` | 생성 코드 preview artifact 빌드 |
-| `/api/audit/analyze` | `POST` | 생성 코드 audit. `generatedCodeId`가 있으면 report에 연결 |
+| `/health` | `GET` | Check API status. |
+| `/uploads/:filename` | `GET` | Serve uploaded images. |
+| `/generated-previews/:previewId/:filename` | `GET` | Serve generated preview artifact files. |
+| `/api/references/upload` | `GET` | List references. |
+| `/api/references/upload` | `POST` | Upload a multipart reference image. |
+| `/api/references/upload?id=...` | `DELETE` | Delete a reference. |
+| `/api/facets/extract` | `POST` | Extract facets from a reference. |
+| `/api/intents/create` | `POST` | Create an intent from a selected recipe. |
+| `/api/recipes/recommend` | `POST` | Recommend recipes from a facet pack. |
+| `/api/intents/evaluate` | `POST` | Evaluate intent coherence and conflicts, then save repair suggestions. `judgeMode` can be `off`, `shadow`, or `primary`. |
+| `/api/intents/apply-repair` | `POST` | Apply a repair suggestion. |
+| `/api/coherence/feedback` | `POST` | Save feedback for coherence judge results. |
+| `/api/generate/v0` | `POST` | Create a v0 UI generation job. Only `single` mode is currently supported. |
+| `/api/generate/jobs/:jobId` | `GET` | Read generation job status and result. |
+| `/api/preview/build` | `POST` | Build preview artifacts from generated code. |
+| `/api/audit/analyze` | `POST` | Audit generated code. If `generatedCodeId` is provided, link the audit to that report. |
 
-## 구현 범위 메모
+## Implementation Notes
 
-- Reference 추출은 color는 rule-based, typography/layout/spacing/component style/mood는 OpenAI LLM 기반입니다. LLM prompt는 palette와 asset dimensions를 함께 받아 non-UI asset에서 layout을 과하게 추론하지 않도록 제한합니다.
-- v0 prompt는 normalized facet, exact palette usage, source mood/confidence, user brief, screen plan, variant count를 한 번에 받아 하나의 default-export React component를 생성합니다.
-- `GenerationMode` 타입에는 `staged`가 남아 있지만 서버는 아직 staged generation을 구현하지 않았고 `/api/generate/v0`에서 400으로 거절합니다.
-- API key가 없거나 외부 API 호출이 실패할 때 보여주기식 mock 결과로 대체하지 않습니다.
+- Reference extraction uses rule-based color analysis and OpenAI LLM analysis for typography, layout, spacing, component style, and mood.
+- LLM prompts receive palette and asset dimensions so they do not over-infer layout from non-UI assets.
+- v0 prompts receive normalized facets, exact palette usage, source mood/confidence, user brief, screen plan, and variant count.
+- v0 generation currently produces one default-export React component.
+- `GenerationMode` still includes `staged`, but the server does not implement staged generation yet. `/api/generate/v0` rejects staged requests with `400`.
+- Missing API keys or failed external API calls do not produce demo/mock results.
 
-## 검증
+## Verification
+
+Run focused checks during development:
 
 ```bash
 npm run typecheck
@@ -159,17 +183,19 @@ npm run regression:intents
 npm run agreement:coherence
 ```
 
-`npm run build`는 backend/frontend 타입체크 후 Vite production build를 수행합니다.
-`npm run regression:intents`는 저장된 intent coherence/report를 비교해 회귀를 확인합니다.
-`npm run agreement:coherence`는 저장된 rule evaluator 결과, OpenAI judge 결과, human feedback expected score의 일치도를 markdown으로 출력합니다.
+`npm run build` runs backend/frontend type checks and then builds the Vite app for production.
 
-로컬 또는 배포 환경 smoke check는 아래 명령으로 확인합니다.
+`npm run regression:intents` compares saved intent coherence reports for regressions.
+
+`npm run agreement:coherence` outputs a Markdown report comparing rule evaluator results, OpenAI judge results, and human feedback expected scores.
+
+Run the deployment smoke check with:
 
 ```bash
 npm run smoke:deploy
 ```
 
-배포 URL을 확인할 때는 환경 변수로 대상 URL을 넘깁니다.
+To smoke check specific deployed URLs, pass them as environment variables:
 
 ```bash
 SMOKE_API_BASE_URL=https://style-print-jung-api.up.railway.app \
@@ -177,9 +203,9 @@ SMOKE_WEB_BASE_URL=https://style-print.vercel.app \
 npm run smoke:deploy
 ```
 
-## 현재 한계
+## Current Limitations
 
-- OpenAI/v0 API key가 없거나 외부 API 호출이 실패하면 관련 API 요청은 실패합니다.
-- staged generation은 타입만 남아 있고 현재 구현되어 있지 않습니다.
-- 저장소는 JSON 파일 기반이라 다중 사용자/배포 환경에는 SQLite/PostgreSQL/S3/R2 같은 저장소가 필요합니다.
-- 인증과 사용자별 데이터 분리는 아직 없습니다.
+- OpenAI and v0 API calls require valid API keys.
+- Staged generation is represented in shared types but is not implemented on the server.
+- Storage is JSON-file based; multi-user or production deployments need a database and durable object storage such as SQLite/PostgreSQL plus S3/R2.
+- Authentication and per-user data isolation are not implemented yet.
